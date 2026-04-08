@@ -1,3 +1,4 @@
+import os
 from typing import Any, Optional
 
 from langchain_anthropic import ChatAnthropic
@@ -5,10 +6,24 @@ from langchain_anthropic import ChatAnthropic
 from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
 
-_PASSTHROUGH_KWARGS = (
+_ANTHROPIC_PASSTHROUGH_KWARGS = (
     "timeout", "max_retries", "api_key", "max_tokens",
     "callbacks", "http_client", "http_async_client", "effort",
 )
+
+_MINIMAX_PASSTHROUGH_KWARGS = (
+    "timeout", "max_retries", "api_key", "max_tokens",
+    "callbacks", "http_client", "http_async_client",
+)
+
+_PROVIDER_PASSTHROUGH_KWARGS = {
+    "anthropic": _ANTHROPIC_PASSTHROUGH_KWARGS,
+    "minimax": _MINIMAX_PASSTHROUGH_KWARGS,
+}
+
+_PROVIDER_API_KEY_ENV = {
+    "minimax": "MINIMAX_API_KEY",
+}
 
 
 class NormalizedChatAnthropic(ChatAnthropic):
@@ -24,10 +39,17 @@ class NormalizedChatAnthropic(ChatAnthropic):
 
 
 class AnthropicClient(BaseLLMClient):
-    """Client for Anthropic Claude models."""
+    """Client for Anthropic-compatible providers."""
 
-    def __init__(self, model: str, base_url: Optional[str] = None, **kwargs):
+    def __init__(
+        self,
+        model: str,
+        base_url: Optional[str] = None,
+        provider: str = "anthropic",
+        **kwargs,
+    ):
         super().__init__(model, base_url, **kwargs)
+        self.provider = provider.lower()
 
     def get_llm(self) -> Any:
         """Return configured ChatAnthropic instance."""
@@ -37,12 +59,22 @@ class AnthropicClient(BaseLLMClient):
         if self.base_url:
             llm_kwargs["base_url"] = self.base_url
 
-        for key in _PASSTHROUGH_KWARGS:
+        if "api_key" not in self.kwargs:
+            api_key_env = _PROVIDER_API_KEY_ENV.get(self.provider)
+            if api_key_env:
+                api_key = os.environ.get(api_key_env)
+                if api_key:
+                    llm_kwargs["api_key"] = api_key
+
+        passthrough_kwargs = _PROVIDER_PASSTHROUGH_KWARGS.get(
+            self.provider, _ANTHROPIC_PASSTHROUGH_KWARGS
+        )
+        for key in passthrough_kwargs:
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
         return NormalizedChatAnthropic(**llm_kwargs)
 
     def validate_model(self) -> bool:
-        """Validate model for Anthropic."""
-        return validate_model("anthropic", self.model)
+        """Validate model for the configured Anthropic-compatible provider."""
+        return validate_model(self.provider, self.model)

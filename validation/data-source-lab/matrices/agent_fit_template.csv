@@ -1,0 +1,7 @@
+source,market_analyst,fundamentals_analyst,news_analyst,full_pipeline,market_reason,fundamentals_reason,news_reason,production_risk
+tushare,yes,yes,partial,partial,"A/H/US OHLCV validated and indicators can be derived locally","A-share statements validated; HK/US statement interfaces exist but need deeper field mapping","generic and macro news exist, but ticker-specific and insider-like coverage is weaker / permission-sensitive","low"
+akshare,yes,yes,partial,partial,"A/H/US OHLCV validated and indicators can be derived locally","A-share abstract plus balance sheet, cashflow, and income statement validated; HK/US report endpoints also returned structured rows","Macro and general news endpoints worked, but the tested ticker-news endpoint failed at runtime","very_high"
+baostock,,,,,,,,
+finnhub,partial,yes,yes,partial,"Current token cannot access candles, so market-analysis fit is limited","Company profile plus reported financial statements are rich and highly structured","General news and insider transactions worked; company-news endpoint exists but tested range returned zero items","high"
+polygon,,,,,,,,
+futu,yes,no,no,partial,"HK and A-share OHLCV validated through OpenD; US quotes are permission-gated","No fundamentals endpoints validated yet","No news endpoints validated yet","medium"

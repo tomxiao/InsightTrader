@@ -139,12 +139,16 @@ TradingAgents supports multiple LLM providers. Set the API key for your chosen p
 export OPENAI_API_KEY=...          # OpenAI (GPT)
 export GOOGLE_API_KEY=...          # Google (Gemini)
 export ANTHROPIC_API_KEY=...       # Anthropic (Claude)
+export MINIMAX_API_KEY=...         # MiniMax (Anthropic-compatible)
 export XAI_API_KEY=...             # xAI (Grok)
 export OPENROUTER_API_KEY=...      # OpenRouter
 export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
 ```
 
 For local models, configure Ollama with `llm_provider: "ollama"` in your config.
+For MiniMax, use `llm_provider: "minimax"` with the Anthropic-compatible Token Plan endpoint `https://api.minimaxi.com/anthropic`.
+MiniMax requires a Token Plan API key here. Usage-based API keys are not interchangeable and will return authentication errors.
+Current Anthropic-compatible MiniMax support is intended for the `MiniMax-M2`, `MiniMax-M2.1`, `MiniMax-M2.5`, and `MiniMax-M2.7` model families, including their `-highspeed` variants where available.
 
 Alternatively, copy `.env.example` to `.env` and fill in your keys:
 ```bash
@@ -178,7 +182,7 @@ An interface will appear showing results as they load, letting you track the age
 
 ### Implementation Details
 
-We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, xAI, OpenRouter, and Ollama.
+We built TradingAgents with LangGraph to ensure flexibility and modularity. The framework supports multiple LLM providers: OpenAI, Google, Anthropic, MiniMax, xAI, OpenRouter, and Ollama.
 
 ### Python Usage
 
@@ -202,7 +206,7 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 
 config = DEFAULT_CONFIG.copy()
-config["llm_provider"] = "openai"        # openai, google, anthropic, xai, openrouter, ollama
+config["llm_provider"] = "openai"        # openai, google, anthropic, minimax, xai, openrouter, ollama
 config["deep_think_llm"] = "gpt-5.4"     # Model for complex reasoning
 config["quick_think_llm"] = "gpt-5.4-mini" # Model for quick tasks
 config["max_debate_rounds"] = 2
@@ -210,6 +214,16 @@ config["max_debate_rounds"] = 2
 ta = TradingAgentsGraph(debug=True, config=config)
 _, decision = ta.propagate("NVDA", "2026-01-15")
 print(decision)
+```
+
+MiniMax can be configured through its Anthropic-compatible endpoint:
+
+```python
+config = DEFAULT_CONFIG.copy()
+config["llm_provider"] = "minimax"
+config["backend_url"] = "https://api.minimaxi.com/anthropic"
+config["deep_think_llm"] = "MiniMax-M2.7"
+config["quick_think_llm"] = "MiniMax-M2.7-highspeed"
 ```
 
 See `tradingagents/default_config.py` for all configuration options.

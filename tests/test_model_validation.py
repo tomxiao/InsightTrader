@@ -1,7 +1,10 @@
 import unittest
 import warnings
+from unittest.mock import patch
 
 from tradingagents.llm_clients.base_client import BaseLLMClient
+from tradingagents.llm_clients.anthropic_client import AnthropicClient
+from tradingagents.llm_clients.factory import create_llm_client
 from tradingagents.llm_clients.model_catalog import get_known_models
 from tradingagents.llm_clients.validators import validate_model
 
@@ -50,3 +53,27 @@ class ModelValidationTests(unittest.TestCase):
                     client.get_llm()
 
                 self.assertEqual(caught, [])
+
+    def test_factory_routes_minimax_to_anthropic_client(self):
+        client = create_llm_client("minimax", "MiniMax-M2.7")
+        self.assertIsInstance(client, AnthropicClient)
+        self.assertEqual(client.provider, "minimax")
+
+    def test_minimax_filters_anthropic_only_kwargs(self):
+        with patch.dict("os.environ", {"MINIMAX_API_KEY": "test-minimax-key"}, clear=False):
+            with patch("tradingagents.llm_clients.anthropic_client.NormalizedChatAnthropic") as chat_cls:
+                client = AnthropicClient(
+                    "MiniMax-M2.7",
+                    base_url="https://api.minimaxi.com/anthropic",
+                    provider="minimax",
+                    effort="high",
+                    max_tokens=256,
+                )
+                client.get_llm()
+
+        kwargs = chat_cls.call_args.kwargs
+        self.assertEqual(kwargs["model"], "MiniMax-M2.7")
+        self.assertEqual(kwargs["base_url"], "https://api.minimaxi.com/anthropic")
+        self.assertEqual(kwargs["api_key"], "test-minimax-key")
+        self.assertEqual(kwargs["max_tokens"], 256)
+        self.assertNotIn("effort", kwargs)

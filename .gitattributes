@@ -1,0 +1,44 @@
+# Line endings: LF in repository and normalized checkouts (aligns with Ruff format line-ending = "lf").
+# Override: Windows scripts use CRLF for correct execution on Windows.
+# Later rules override earlier ones (Git applies last match).
+
+* text=auto eol=lf
+
+# Explicit LF for common source & config (documents intent; same as default for these paths)
+*.py text eol=lf
+*.pyi text eol=lf
+*.pyw text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.toml text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.ini text eol=lf
+*.cfg text eol=lf
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile text eol=lf
+
+# Windows command-line scripts
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Do not let Git treat these as text (avoid CRLF/LF corruption)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
+*.zip binary
+*.gz binary
+*.7z binary
+*.sqlite binary
+*.sqlite3 binary

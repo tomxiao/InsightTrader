@@ -36,6 +36,20 @@ MODEL_OPTIONS: ProviderModeOptions = {
             ("Claude Sonnet 4.5 - Agents and coding", "claude-sonnet-4-5"),
         ],
     },
+    "minimax": {
+        "quick": [
+            ("MiniMax M2.7 Highspeed - Fast Anthropic-compatible model", "MiniMax-M2.7-highspeed"),
+            ("MiniMax M2.5 Highspeed - Faster, lower-latency option", "MiniMax-M2.5-highspeed"),
+            ("MiniMax M2.1 Highspeed - Agile multilingual model", "MiniMax-M2.1-highspeed"),
+            ("MiniMax M2.7 - Strong general reasoning", "MiniMax-M2.7"),
+        ],
+        "deep": [
+            ("MiniMax M2.7 - Strongest Anthropic-compatible reasoning model", "MiniMax-M2.7"),
+            ("MiniMax M2.5 - Peak performance and value", "MiniMax-M2.5"),
+            ("MiniMax M2 - Agentic and advanced reasoning", "MiniMax-M2"),
+            ("MiniMax M2.1 - Strong coding and multilingual support", "MiniMax-M2.1"),
+        ],
+    },
     "google": {
         "quick": [
             ("Gemini 3 Flash - Next-gen fast", "gemini-3-flash-preview"),
