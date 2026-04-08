@@ -1,7 +1,9 @@
 import unittest
 import warnings
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
+from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.llm_clients.base_client import BaseLLMClient
 from tradingagents.llm_clients.anthropic_client import AnthropicClient
 from tradingagents.llm_clients.factory import create_llm_client
@@ -77,3 +79,26 @@ class ModelValidationTests(unittest.TestCase):
         self.assertEqual(kwargs["api_key"], "test-minimax-key")
         self.assertEqual(kwargs["max_tokens"], 256)
         self.assertNotIn("effort", kwargs)
+
+    def test_trading_graph_forwards_timeout_and_retry_kwargs_to_llm_clients(self):
+        client = MagicMock()
+        client.get_llm.return_value = object()
+
+        config = DEFAULT_CONFIG.copy()
+        config["llm_provider"] = "minimax"
+        config["llm_timeout"] = 321
+        config["llm_max_retries"] = 7
+
+        with patch("tradingagents.graph.trading_graph.create_llm_client", return_value=client) as create_client:
+            with patch("tradingagents.graph.trading_graph.FinancialSituationMemory"):
+                with patch("tradingagents.graph.trading_graph.GraphSetup") as graph_setup_cls:
+                    with patch("tradingagents.graph.trading_graph.Reflector"):
+                        with patch("tradingagents.graph.trading_graph.SignalProcessor"):
+                            with patch.object(TradingAgentsGraph, "_create_tool_nodes", return_value={}):
+                                graph_setup_cls.return_value.setup_graph.return_value = object()
+                                TradingAgentsGraph(selected_analysts=["market"], config=config)
+
+        self.assertEqual(create_client.call_count, 2)
+        for call in create_client.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], 321)
+            self.assertEqual(call.kwargs["max_retries"], 7)

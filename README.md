@@ -143,6 +143,10 @@ export MINIMAX_API_KEY=...         # MiniMax (Anthropic-compatible)
 export XAI_API_KEY=...             # xAI (Grok)
 export OPENROUTER_API_KEY=...      # OpenRouter
 export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
+export TUSHARE_TOKEN=...           # Tushare Pro
+export FINNHUB_TOKEN=...           # Finnhub
+export FUTU_OPEND_HOST=127.0.0.1   # Futu / moomoo OpenD host
+export FUTU_OPEND_PORT=11111       # Futu / moomoo OpenD port
 ```
 
 For local models, configure Ollama with `llm_provider: "ollama"` in your config.
@@ -150,10 +154,40 @@ For MiniMax, use `llm_provider: "minimax"` with the Anthropic-compatible Token P
 MiniMax requires a Token Plan API key here. Usage-based API keys are not interchangeable and will return authentication errors.
 Current Anthropic-compatible MiniMax support is intended for the `MiniMax-M2`, `MiniMax-M2.1`, `MiniMax-M2.5`, and `MiniMax-M2.7` model families, including their `-highspeed` variants where available.
 
+To avoid indefinitely hung upstream requests, the default config also sets bounded LLM transport controls:
+
+```python
+config["llm_timeout"] = 240
+config["llm_max_retries"] = 2
+```
+
+These values are forwarded to the underlying LangChain chat client for supported providers such as OpenAI, Google, Anthropic, and Anthropic-compatible backends like MiniMax.
+
 Alternatively, copy `.env.example` to `.env` and fill in your keys:
 ```bash
 cp .env.example .env
 ```
+
+### Market-Aware Data Routing
+
+TradingAgents now supports multiple financial data vendors beyond the legacy `yfinance` / `alpha_vantage` pair. The unified dataflow layer can route tool calls by market so agents can keep using the same abstract tools while the backend selects the preferred vendor for the instrument being analyzed.
+
+Supported vendors in the dataflow layer:
+
+- `tushare`
+- `futu`
+- `finnhub`
+- `akshare`
+- legacy `yfinance`
+- legacy `alpha_vantage`
+
+When market-aware routing is enabled, the router resolves the ticker market first and then maps each tool to the preferred vendor for that market. For example:
+
+- A-shares default to `tushare` for market and fundamentals workflows
+- Hong Kong market data defaults to `tushare`, while validated fundamentals default to `akshare`
+- US fundamentals, news, and insider transactions default to `finnhub`
+
+This behavior is configured in `tradingagents/default_config.py` through `market_routing_enabled` and `market_tool_vendors`.
 
 ### CLI Usage
 
@@ -210,6 +244,7 @@ config["llm_provider"] = "openai"        # openai, google, anthropic, minimax, x
 config["deep_think_llm"] = "gpt-5.4"     # Model for complex reasoning
 config["quick_think_llm"] = "gpt-5.4-mini" # Model for quick tasks
 config["max_debate_rounds"] = 2
+config["market_routing_enabled"] = True
 
 ta = TradingAgentsGraph(debug=True, config=config)
 _, decision = ta.propagate("NVDA", "2026-01-15")

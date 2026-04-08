@@ -109,6 +109,19 @@
 
 验证日期：`2026-04-09`
 
+工程实现状态：`已完成首轮落地`
+
+实现说明：
+
+- 已在 `tradingagents/dataflows/` 中接入 `tushare`、`futu`、`finnhub`、`akshare`
+- 已实现按标的所属市场自动选择最佳数据源的统一路由
+- 已完成一轮真实数据源 smoke test，验证通过的代表性链路包括：
+  - A股 `get_stock_data -> tushare`
+  - 港股 `get_fundamentals -> akshare`
+  - 美股 `get_fundamentals/get_news/get_global_news/get_insider_transactions -> finnhub`
+  - `futu` 港股行情直连 smoke test
+- 后续仍需继续补充更完整的 regression 测试、字段映射细化和异常场景验证
+
 下表是当前关于“按市场与数据项选择单一最佳数据源”的验证结论。该结论优先依据已验证能力，其次在能力接近时使用当前稳定性约束 `tushare > futu > finnhub > akshare` 做裁决。
 
 | 数据项 | 项说明 | Agent | A股 | 港股 | 美股 |

@@ -18,7 +18,7 @@ from tradingagents.agents.utils.agent_states import (
     InvestDebateState,
     RiskDebateState,
 )
-from tradingagents.dataflows.config import set_config
+from tradingagents.dataflows.config import set_config, set_runtime_context
 
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_utils import (
@@ -137,6 +137,13 @@ class TradingAgentsGraph:
         """Get provider-specific kwargs for LLM client creation."""
         kwargs = {}
         provider = self.config.get("llm_provider", "").lower()
+        timeout = self.config.get("llm_timeout")
+        max_retries = self.config.get("llm_max_retries")
+
+        if timeout is not None:
+            kwargs["timeout"] = timeout
+        if max_retries is not None:
+            kwargs["max_retries"] = max_retries
 
         if provider == "google":
             thinking_level = self.config.get("google_thinking_level")
@@ -195,6 +202,7 @@ class TradingAgentsGraph:
         """Run the trading agents graph for a company on a specific date."""
 
         self.ticker = company_name
+        set_runtime_context(ticker=company_name, trade_date=str(trade_date))
 
         # Initialize state
         init_agent_state = self.propagator.create_initial_state(
