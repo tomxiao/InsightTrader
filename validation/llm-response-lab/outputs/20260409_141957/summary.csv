@@ -1,0 +1,10 @@
+case_id,case_label,provider,provider_key,model,success,duration_ms,prompt_chars,response_chars,usage_prompt_tokens,usage_completion_tokens,usage_total_tokens,error_type,error_message
+research_debate_bull,Bull Researcher,DeepSeek,deepseek,deepseek-chat,True,41592,13264,2682,6822,1554,8376,,
+research_debate_bear,Bear Researcher,DeepSeek,deepseek,deepseek-chat,True,39703,19966,2599,10557,1513,12070,,
+research_debate_manager,Research Manager,DeepSeek,deepseek,deepseek-chat,True,22891,9245,1518,4667,879,5546,,
+research_debate_bull,Bull Researcher,Qwen,qwen,qwen-max-latest,True,58233,13264,2501,7859,1342,9201,,
+research_debate_bear,Bear Researcher,Qwen,qwen,qwen-max-latest,True,73469,19966,2840,12083,1652,13735,,
+research_debate_manager,Research Manager,Qwen,qwen,qwen-max-latest,True,55733,9245,2061,5296,1198,6494,,
+research_debate_bull,Bull Researcher,MiniMax,minimax,MiniMax-M2.7,True,119046,13264,4508,6545,3104,9649,,
+research_debate_bear,Bear Researcher,MiniMax,minimax,MiniMax-M2.7,True,140250,19966,5824,10104,3879,13983,,
+research_debate_manager,Research Manager,MiniMax,minimax,MiniMax-M2.7,True,64782,9245,1685,4521,1657,6178,,

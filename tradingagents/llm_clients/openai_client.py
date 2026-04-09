@@ -1,10 +1,12 @@
 import os
+import time
 from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
 
 from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
+from tradingagents.observability import emit_llm_event
 
 
 class NormalizedChatOpenAI(ChatOpenAI):
@@ -16,7 +18,35 @@ class NormalizedChatOpenAI(ChatOpenAI):
     """
 
     def invoke(self, input, config=None, **kwargs):
-        return normalize_content(super().invoke(input, config, **kwargs))
+        started_at = time.monotonic()
+        provider = getattr(self, "_tradingagents_provider", "openai")
+        model = getattr(self, "_tradingagents_model", getattr(self, "model", None))
+        emit_llm_event(
+            "llm.started",
+            llm_input=input,
+            provider=provider,
+            model=model,
+        )
+        try:
+            response = super().invoke(input, config, **kwargs)
+        except Exception as exc:
+            emit_llm_event(
+                "llm.failed",
+                llm_input=input,
+                duration_ms=int((time.monotonic() - started_at) * 1000),
+                provider=provider,
+                model=model,
+                error=exc,
+            )
+            raise
+
+        emit_llm_event(
+            "llm.completed",
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            provider=provider,
+            model=model,
+        )
+        return normalize_content(response)
 
 # Kwargs forwarded from user config to ChatOpenAI
 _PASSTHROUGH_KWARGS = (
@@ -26,6 +56,7 @@ _PASSTHROUGH_KWARGS = (
 
 # Provider base URLs and API key env vars
 _PROVIDER_CONFIG = {
+    "deepseek": ("https://api.deepseek.com/v1", "DEEPSEEK_API_KEY"),
     "xai": ("https://api.x.ai/v1", "XAI_API_KEY"),
     "openrouter": ("https://openrouter.ai/api/v1", "OPENROUTER_API_KEY"),
     "ollama": ("http://localhost:11434/v1", None),
@@ -33,12 +64,12 @@ _PROVIDER_CONFIG = {
 
 
 class OpenAIClient(BaseLLMClient):
-    """Client for OpenAI, Ollama, OpenRouter, and xAI providers.
+    """Client for OpenAI-compatible providers.
 
     For native OpenAI models, uses the Responses API (/v1/responses) which
     supports reasoning_effort with function tools across all model families
-    (GPT-4.1, GPT-5). Third-party compatible providers (xAI, OpenRouter,
-    Ollama) use standard Chat Completions.
+    (GPT-4.1, GPT-5). Third-party compatible providers (DeepSeek, xAI,
+    OpenRouter, Ollama) use standard Chat Completions.
     """
 
     def __init__(
@@ -79,7 +110,10 @@ class OpenAIClient(BaseLLMClient):
         if self.provider == "openai":
             llm_kwargs["use_responses_api"] = True
 
-        return NormalizedChatOpenAI(**llm_kwargs)
+        llm = NormalizedChatOpenAI(**llm_kwargs)
+        llm._tradingagents_provider = self.provider
+        llm._tradingagents_model = self.model
+        return llm
 
     def validate_model(self) -> bool:
         """Validate model for the provider."""

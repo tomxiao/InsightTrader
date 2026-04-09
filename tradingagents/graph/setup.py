@@ -1,11 +1,13 @@
 # TradingAgents/graph/setup.py
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import *
 from tradingagents.agents.utils.agent_states import AgentState
+from tradingagents.dataflows.config import get_runtime_context, set_runtime_context
+from tradingagents.observability import resolve_node_kind, resolve_stage_id_for_node
 
 from .conditional_logic import ConditionalLogic
 
@@ -24,6 +26,7 @@ class GraphSetup:
         invest_judge_memory,
         portfolio_manager_memory,
         conditional_logic: ConditionalLogic,
+        node_tracker=None,
     ):
         """Initialize with required components."""
         self.quick_thinking_llm = quick_thinking_llm
@@ -35,6 +38,48 @@ class GraphSetup:
         self.invest_judge_memory = invest_judge_memory
         self.portfolio_manager_memory = portfolio_manager_memory
         self.conditional_logic = conditional_logic
+        self.node_tracker = node_tracker
+
+    def _invoke_node(self, node, *args, **kwargs):
+        if hasattr(node, "invoke"):
+            return node.invoke(*args, **kwargs)
+        return node(*args, **kwargs)
+
+    def _with_node_observability(self, node_name: str, node):
+        if self.node_tracker is None:
+            return node
+
+        stage_id = resolve_stage_id_for_node(node_name)
+        node_kind = resolve_node_kind(node_name)
+
+        def instrumented_node(*args, **kwargs):
+            previous_context = get_runtime_context()
+            self.node_tracker.mark_started(
+                node_id=node_name,
+                stage_id=stage_id,
+                node_kind=node_kind,
+            )
+            set_runtime_context(
+                current_stage_id=stage_id,
+                current_node_id=node_name,
+                current_node_kind=node_kind,
+            )
+            try:
+                result = self._invoke_node(node, *args, **kwargs)
+            except Exception as exc:
+                self.node_tracker.mark_failed(exc)
+                raise
+            else:
+                self.node_tracker.mark_completed()
+                return result
+            finally:
+                set_runtime_context(
+                    current_stage_id=previous_context.get("current_stage_id"),
+                    current_node_id=previous_context.get("current_node_id"),
+                    current_node_kind=previous_context.get("current_node_kind"),
+                )
+
+        return instrumented_node
 
     def setup_graph(
         self, selected_analysts=["market", "social", "news", "fundamentals"]
@@ -109,21 +154,55 @@ class GraphSetup:
 
         # Add analyst nodes to the graph
         for analyst_type, node in analyst_nodes.items():
-            workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
+            analyst_node_name = f"{analyst_type.capitalize()} Analyst"
+            clear_node_name = f"Msg Clear {analyst_type.capitalize()}"
+            tool_node_name = f"tools_{analyst_type}"
             workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
+                analyst_node_name,
+                self._with_node_observability(analyst_node_name, node),
             )
-            workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+            workflow.add_node(
+                clear_node_name,
+                self._with_node_observability(clear_node_name, delete_nodes[analyst_type]),
+            )
+            workflow.add_node(
+                tool_node_name,
+                self._with_node_observability(tool_node_name, tool_nodes[analyst_type]),
+            )
 
         # Add other nodes
-        workflow.add_node("Bull Researcher", bull_researcher_node)
-        workflow.add_node("Bear Researcher", bear_researcher_node)
-        workflow.add_node("Research Manager", research_manager_node)
-        workflow.add_node("Trader", trader_node)
-        workflow.add_node("Aggressive Analyst", aggressive_analyst)
-        workflow.add_node("Neutral Analyst", neutral_analyst)
-        workflow.add_node("Conservative Analyst", conservative_analyst)
-        workflow.add_node("Portfolio Manager", portfolio_manager_node)
+        workflow.add_node(
+            "Bull Researcher",
+            self._with_node_observability("Bull Researcher", bull_researcher_node),
+        )
+        workflow.add_node(
+            "Bear Researcher",
+            self._with_node_observability("Bear Researcher", bear_researcher_node),
+        )
+        workflow.add_node(
+            "Research Manager",
+            self._with_node_observability("Research Manager", research_manager_node),
+        )
+        workflow.add_node(
+            "Trader",
+            self._with_node_observability("Trader", trader_node),
+        )
+        workflow.add_node(
+            "Aggressive Analyst",
+            self._with_node_observability("Aggressive Analyst", aggressive_analyst),
+        )
+        workflow.add_node(
+            "Neutral Analyst",
+            self._with_node_observability("Neutral Analyst", neutral_analyst),
+        )
+        workflow.add_node(
+            "Conservative Analyst",
+            self._with_node_observability("Conservative Analyst", conservative_analyst),
+        )
+        workflow.add_node(
+            "Portfolio Manager",
+            self._with_node_observability("Portfolio Manager", portfolio_manager_node),
+        )
 
         # Define edges
         # Start with the first analyst

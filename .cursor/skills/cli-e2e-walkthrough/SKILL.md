@@ -70,11 +70,12 @@ print("CLI_REAL_E2E_DONE")
 
 ## What to monitor
 - Terminal completion status and exit code
-- `results/<ticker>/<date>/run_trace.jsonl`
-- `results/<ticker>/<date>/stage_events.jsonl`
-- `results/<ticker>/<date>/route_events.jsonl`
-- `results/<ticker>/<date>/message_tool.log`
-- `results/<ticker>/<date>/reports/*.md`
+- `results/<ticker>_<yyyy_mmdd_hhmm>/run_trace.jsonl`
+- `results/<ticker>_<yyyy_mmdd_hhmm>/stage_events.jsonl`
+- `results/<ticker>_<yyyy_mmdd_hhmm>/route_events.jsonl`
+- `results/<ticker>_<yyyy_mmdd_hhmm>/message_tool.log`
+- `results/<ticker>_<yyyy_mmdd_hhmm>/reports/*.md`
+- If two runs start within the same minute, expect a numeric suffix such as `_02`
 
 ## How to analyze the run
 1. Capture the final `run_id`.

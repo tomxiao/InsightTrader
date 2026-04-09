@@ -1,0 +1,28 @@
+Traceback (most recent call last):
+  File "<string>", line 7, in <module>
+  File "D:\CodeBase\TradingAgents\tradingagents\dataflows\akshare_common.py", line 25, in run_without_proxy
+    return func()
+           ^^^^^^
+  File "<string>", line 7, in <lambda>
+  File "C:\Users\tomxiao\AppData\Local\Programs\Python\Python312\Lib\site-packages\akshare\news\news_stock.py", line 116, in stock_news_em
+    temp_df["新闻内容"] = temp_df["新闻内容"].str.replace(r"\u3000", "", regex=True)
+                          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tomxiao\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\strings\accessor.py", line 142, in wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tomxiao\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\strings\accessor.py", line 1814, in replace
+    result = res_output.array._str_replace(
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tomxiao\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\arrays\string_arrow.py", line 479, in _str_replace
+    return ArrowStringArrayMixin._str_replace(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\tomxiao\AppData\Local\Programs\Python\Python312\Lib\site-packages\pandas\core\arrays\_arrow_string_mixins.py", line 246, in _str_replace
+    result = func(
+             ^^^^^
+  File "C:\Users\tomxiao\AppData\Local\Programs\Python\Python312\Lib\site-packages\pyarrow\compute.py", line 271, in wrapper
+    return func.call(args, options, memory_pool)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "pyarrow/_compute.pyx", line 399, in pyarrow._compute.Function.call
+  File "pyarrow/error.pxi", line 155, in pyarrow.lib.pyarrow_internal_check_status
+  File "pyarrow/error.pxi", line 92, in pyarrow.lib.check_status
+pyarrow.lib.ArrowInvalid: Invalid regular expression: invalid escape sequence: \u

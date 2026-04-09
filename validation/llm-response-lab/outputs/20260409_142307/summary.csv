@@ -1,0 +1,10 @@
+case_id,case_label,provider,provider_key,model,success,duration_ms,prompt_chars,response_chars,usage_prompt_tokens,usage_completion_tokens,usage_total_tokens,error_type,error_message
+research_debate_bull,Bull Researcher,DeepSeek,deepseek,deepseek-chat,True,37016,13264,2534,6822,1454,8276,,
+research_debate_bear,Bear Researcher,DeepSeek,deepseek,deepseek-chat,True,39233,19966,2618,10557,1532,12089,,
+research_debate_manager,Research Manager,DeepSeek,deepseek,deepseek-chat,True,29203,9245,1983,4667,1110,5777,,
+research_debate_bull,Bull Researcher,Qwen,qwen,qwen-max-latest,True,59639,13264,2386,7859,1328,9187,,
+research_debate_bear,Bear Researcher,Qwen,qwen,qwen-max-latest,True,84218,19966,3261,12083,1963,14046,,
+research_debate_manager,Research Manager,Qwen,qwen,qwen-max-latest,True,48000,9245,2105,5296,1217,6513,,
+research_debate_bull,Bull Researcher,MiniMax,minimax,MiniMax-M2.7,True,111031,13264,4261,6545,2651,9196,,
+research_debate_bear,Bear Researcher,MiniMax,minimax,MiniMax-M2.7,True,146985,19966,6174,10104,4046,14150,,
+research_debate_manager,Research Manager,MiniMax,minimax,MiniMax-M2.7,False,3827,9245,0,,,,InternalServerError,"Error code: 500 - {'type': 'error', 'error': {'type': 'api_error', 'message': 'system error (1033)'}, 'request_id': '06267afb86252bd4d3d2634789fa40bf'}"

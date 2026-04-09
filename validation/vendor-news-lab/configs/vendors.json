@@ -1,0 +1,29 @@
+[
+  {
+    "vendor_key": "akshare",
+    "display_name": "AKShare",
+    "markets_supported": ["cn", "hk"],
+    "news_mode": "symbol_with_fallback",
+    "requires_api_key_env": null,
+    "enabled": true,
+    "notes": "CN/HK 个股新闻优先验证 stock_news_em，必要时回退到主新闻流过滤。"
+  },
+  {
+    "vendor_key": "tushare",
+    "display_name": "Tushare",
+    "markets_supported": ["cn", "hk"],
+    "news_mode": "time_window_filter",
+    "requires_api_key_env": "TUSHARE_TOKEN",
+    "enabled": true,
+    "notes": "个股新闻通过时间窗拉取后做文本过滤，不是原生 symbol API。"
+  },
+  {
+    "vendor_key": "finnhub",
+    "display_name": "Finnhub",
+    "markets_supported": ["us"],
+    "news_mode": "symbol_native",
+    "requires_api_key_env": "FINNHUB_TOKEN",
+    "enabled": true,
+    "notes": "US 个股新闻走 company_news(symbol, from, to) 原生接口。"
+  }
+]

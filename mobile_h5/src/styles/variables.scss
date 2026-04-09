@@ -1,0 +1,25 @@
+:root {
+  --mobile-color-bg: #f7f8fa;
+  --mobile-color-surface: #ffffff;
+  --mobile-color-text: #1f2329;
+  --mobile-color-text-secondary: #646a73;
+  --mobile-color-primary: #1677ff;
+  --mobile-color-border: #e5e6eb;
+  --mobile-color-shadow: rgba(31, 35, 41, 0.08);
+
+  --mobile-radius-sm: 12px;
+  --mobile-radius-md: 16px;
+  --mobile-radius-lg: 20px;
+
+  --mobile-space-xs: 8px;
+  --mobile-space-sm: 12px;
+  --mobile-space-md: 16px;
+  --mobile-space-lg: 24px;
+
+  --mobile-font-size-sm: 14px;
+  --mobile-font-size-md: 16px;
+  --mobile-font-size-lg: 20px;
+  --mobile-font-size-xl: 24px;
+
+  --mobile-safe-bottom: env(safe-area-inset-bottom, 0px);
+}

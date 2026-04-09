@@ -9,6 +9,14 @@ ProviderModeOptions = Dict[str, Dict[str, List[ModelOption]]]
 
 
 MODEL_OPTIONS: ProviderModeOptions = {
+    "deepseek": {
+        "quick": [
+            ("DeepSeek Chat - Default OpenAI-compatible model", "deepseek-chat"),
+        ],
+        "deep": [
+            ("DeepSeek Chat - Default OpenAI-compatible model", "deepseek-chat"),
+        ],
+    },
     "openai": {
         "quick": [
             ("GPT-5.4 Mini - Fast, strong coding and tool use", "gpt-5.4-mini"),

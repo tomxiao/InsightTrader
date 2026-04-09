@@ -3,12 +3,13 @@
 import os
 from pathlib import Path
 import json
-from datetime import date
+from datetime import date, datetime
 from typing import Dict, Any, Tuple, List, Optional
 
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
+from tradingagents.observability import NodeEventTracker
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -18,7 +19,8 @@ from tradingagents.agents.utils.agent_states import (
     InvestDebateState,
     RiskDebateState,
 )
-from tradingagents.dataflows.config import set_config, set_runtime_context
+from tradingagents.dataflows.config import get_runtime_context, set_config, set_runtime_context
+from tradingagents.run_paths import resolve_results_run_dir
 
 # Import the new abstract tool methods from agent_utils
 from tradingagents.agents.utils.agent_utils import (
@@ -61,6 +63,13 @@ class TradingAgentsGraph:
         self.debug = debug
         self.config = config or DEFAULT_CONFIG
         self.callbacks = callbacks or []
+        self.node_tracker = NodeEventTracker(
+            config=self.config,
+            runtime_context_getter=get_runtime_context,
+            stall_threshold_s=float(self.config.get("node_stall_threshold_s", 60.0)),
+            check_interval_s=float(self.config.get("node_check_interval_s", 5.0)),
+        )
+        self.node_tracker.start_watchdog()
 
         # Update the interface's config
         set_config(self.config)
@@ -119,6 +128,7 @@ class TradingAgentsGraph:
             self.invest_judge_memory,
             self.portfolio_manager_memory,
             self.conditional_logic,
+            node_tracker=self.node_tracker,
         )
 
         self.propagator = Propagator()
@@ -202,6 +212,19 @@ class TradingAgentsGraph:
         """Run the trading agents graph for a company on a specific date."""
 
         self.ticker = company_name
+        runtime_context = get_runtime_context()
+        if not runtime_context.get("trace_dir"):
+            run_started_at = datetime.now()
+            trace_dir = resolve_results_run_dir(
+                self.config["results_dir"],
+                company_name,
+                run_started_at,
+            )
+            set_runtime_context(
+                trace_dir=str(trace_dir),
+                run_started_at_iso=run_started_at.isoformat(),
+                run_dir_name=trace_dir.name,
+            )
         set_runtime_context(ticker=company_name, trade_date=str(trade_date))
 
         # Initialize state
@@ -267,7 +290,15 @@ class TradingAgentsGraph:
         }
 
         # Save to file
-        directory = Path(self.config["results_dir"]) / self.ticker / "TradingAgentsStrategy_logs"
+        trace_dir = get_runtime_context().get("trace_dir")
+        if trace_dir:
+            directory = Path(trace_dir) / "TradingAgentsStrategy_logs"
+        else:
+            directory = resolve_results_run_dir(
+                self.config["results_dir"],
+                self.ticker,
+                datetime.now(),
+            ) / "TradingAgentsStrategy_logs"
         directory.mkdir(parents=True, exist_ok=True)
 
         log_path = directory / f"full_states_log_{trade_date}.json"
@@ -295,3 +326,7 @@ class TradingAgentsGraph:
     def process_signal(self, full_signal):
         """Process a signal to extract the core decision."""
         return self.signal_processor.process_signal(full_signal)
+
+    def stop_observers(self):
+        """Stop background observability threads for this graph."""
+        self.node_tracker.stop_watchdog()

@@ -7,6 +7,7 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.llm_clients.base_client import BaseLLMClient
 from tradingagents.llm_clients.anthropic_client import AnthropicClient
 from tradingagents.llm_clients.factory import create_llm_client
+from tradingagents.llm_clients.openai_client import OpenAIClient
 from tradingagents.llm_clients.model_catalog import get_known_models
 from tradingagents.llm_clients.validators import validate_model
 
@@ -61,6 +62,31 @@ class ModelValidationTests(unittest.TestCase):
         self.assertIsInstance(client, AnthropicClient)
         self.assertEqual(client.provider, "minimax")
 
+    def test_factory_routes_deepseek_to_openai_client(self):
+        client = create_llm_client("deepseek", "deepseek-chat")
+        self.assertIsInstance(client, OpenAIClient)
+        self.assertEqual(client.provider, "deepseek")
+
+    def test_deepseek_uses_dedicated_base_url_and_api_key(self):
+        with patch.dict("os.environ", {"DEEPSEEK_API_KEY": "test-deepseek-key"}, clear=False):
+            with patch("tradingagents.llm_clients.openai_client.NormalizedChatOpenAI") as chat_cls:
+                client = OpenAIClient(
+                    "deepseek-chat",
+                    base_url="https://unused.example.com/v1",
+                    provider="deepseek",
+                    timeout=123,
+                    max_retries=4,
+                )
+                client.get_llm()
+
+        kwargs = chat_cls.call_args.kwargs
+        self.assertEqual(kwargs["model"], "deepseek-chat")
+        self.assertEqual(kwargs["base_url"], "https://api.deepseek.com/v1")
+        self.assertEqual(kwargs["api_key"], "test-deepseek-key")
+        self.assertEqual(kwargs["timeout"], 123)
+        self.assertEqual(kwargs["max_retries"], 4)
+        self.assertNotIn("use_responses_api", kwargs)
+
     def test_minimax_filters_anthropic_only_kwargs(self):
         with patch.dict("os.environ", {"MINIMAX_API_KEY": "test-minimax-key"}, clear=False):
             with patch("tradingagents.llm_clients.anthropic_client.NormalizedChatAnthropic") as chat_cls:
@@ -102,3 +128,9 @@ class ModelValidationTests(unittest.TestCase):
         for call in create_client.call_args_list:
             self.assertEqual(call.kwargs["timeout"], 321)
             self.assertEqual(call.kwargs["max_retries"], 7)
+
+    def test_default_config_uses_deepseek_chat(self):
+        self.assertEqual(DEFAULT_CONFIG["llm_provider"], "deepseek")
+        self.assertEqual(DEFAULT_CONFIG["backend_url"], "https://api.deepseek.com/v1")
+        self.assertEqual(DEFAULT_CONFIG["deep_think_llm"], "deepseek-chat")
+        self.assertEqual(DEFAULT_CONFIG["quick_think_llm"], "deepseek-chat")

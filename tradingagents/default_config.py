@@ -9,10 +9,10 @@ DEFAULT_CONFIG = {
         "dataflows/data_cache",
     ),
     # LLM settings
-    "llm_provider": "openai",
-    "deep_think_llm": "gpt-5.4",
-    "quick_think_llm": "gpt-5.4-mini",
-    "backend_url": "https://api.openai.com/v1",  # Override for compatible providers like OpenRouter or MiniMax
+    "llm_provider": "deepseek",
+    "deep_think_llm": "deepseek-chat",
+    "quick_think_llm": "deepseek-chat",
+    "backend_url": "https://api.deepseek.com/v1",  # Override for compatible providers like OpenRouter, DeepSeek, or MiniMax
     "llm_timeout": 240,                   # Bound each LLM request so stalled network calls do not hang forever
     "llm_max_retries": 2,                 # Small retry budget for transient upstream/provider failures
     # Provider-specific thinking configuration
@@ -29,10 +29,10 @@ DEFAULT_CONFIG = {
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {
-        "core_stock_apis": "yfinance",       # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
-        "technical_indicators": "yfinance",  # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
-        "fundamental_data": "yfinance",      # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
-        "news_data": "yfinance",             # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
+        "core_stock_apis": "tushare",       # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
+        "technical_indicators": "tushare",  # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
+        "fundamental_data": "tushare",      # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
+        "news_data": "akshare",             # Options: yfinance, alpha_vantage, tushare, futu, finnhub, akshare
     },
     "market_routing_enabled": True,
     "market_tool_vendors": DEFAULT_MARKET_TOOL_VENDORS,

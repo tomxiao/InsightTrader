@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>当前会话空态原型</title>
+    <link rel="stylesheet" href="./assets/styles.css" />
+  </head>
+  <body>
+    <main class="prototype-stage">
+      <header class="prototype-header">
+        <div>
+          <h1>当前会话页 · 空态</h1>
+          <p>登录后的默认落点，不再经过首页；欢迎语、快捷问题和输入框共同构成第一次发起分析的入口。</p>
+        </div>
+        <nav class="prototype-links">
+          <a class="prototype-link" href="./index.html" data-nav>目录</a>
+          <a class="prototype-link" href="./login.html" data-nav>登录页</a>
+          <a class="prototype-link" href="./conversation-empty.html" data-nav>会话空态</a>
+          <a class="prototype-link" href="./conversation-running.html" data-nav>会话运行态</a>
+          <a class="prototype-link" href="./conversation-result.html" data-nav>会话结果态</a>
+          <a class="prototype-link" href="./drawer.html" data-nav>左侧抽屉</a>
+          <a class="prototype-link" href="./report-reader.html" data-nav>完整报告</a>
+        </nav>
+      </header>
+
+      <div class="phone-frame">
+        <div class="phone-notch"></div>
+        <section class="screen">
+          <div class="statusbar">
+            <span><strong>9:41</strong></span>
+            <span>5G · 86%</span>
+          </div>
+          <header class="app-topbar">
+            <a class="icon-button" href="./drawer.html">☰</a>
+            <div class="topbar-center">
+              <p class="topbar-title">新会话</p>
+              <p class="topbar-subtitle">InsightTrader</p>
+            </div>
+            <span class="icon-button">⌁</span>
+          </header>
+
+          <div class="screen-scroll">
+            <section class="hero-block">
+              <div class="brand-chip">
+                <span class="brand-dot"></span>
+                对话式分析入口
+              </div>
+              <h2 class="hero-title">今天想分析哪只股票？</h2>
+              <p class="hero-description">
+                直接输入股票名称、代码，或告诉我你更关注估值、风险还是中长期逻辑。
+              </p>
+              <div class="quick-actions">
+                <span class="quick-chip">分析一只股票</span>
+                <span class="quick-chip">查看某只股票最新报告</span>
+                <span class="quick-chip">重点看估值和风险</span>
+              </div>
+            </section>
+          </div>
+
+          <section class="floating-input">
+            <div class="input-box">输入股票名称、代码或问题，例如：分析宁德时代，偏长期持有，重点看风险控制。</div>
+            <div class="input-footer">
+              <div class="input-actions">
+                <span class="kbd">深度思考</span>
+                <span class="kbd">智能搜索</span>
+              </div>
+              <a class="btn primary" href="./conversation-running.html">发送</a>
+            </div>
+          </section>
+        </section>
+      </div>
+    </main>
+
+    <script src="./assets/app.js"></script>
+  </body>
+</html>

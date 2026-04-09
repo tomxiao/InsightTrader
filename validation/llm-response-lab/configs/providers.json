@@ -1,0 +1,32 @@
+[
+  {
+    "provider_key": "deepseek",
+    "display_name": "DeepSeek",
+    "client_type": "openai_compatible",
+    "base_url": "https://api.deepseek.com/v1",
+    "model": "deepseek-chat",
+    "api_key_env": "DEEPSEEK_API_KEY",
+    "timeout": 240,
+    "max_retries": 2
+  },
+  {
+    "provider_key": "qwen",
+    "display_name": "Qwen",
+    "client_type": "openai_compatible",
+    "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+    "model": "qwen-max-latest",
+    "api_key_env": "DASHSCOPE_API_KEY",
+    "timeout": 240,
+    "max_retries": 2
+  },
+  {
+    "provider_key": "minimax",
+    "display_name": "MiniMax",
+    "client_type": "anthropic_compatible",
+    "base_url": "https://api.minimaxi.com/anthropic",
+    "model": "MiniMax-M2.7",
+    "api_key_env": "MINIMAX_API_KEY",
+    "timeout": 240,
+    "max_retries": 2
+  }
+]

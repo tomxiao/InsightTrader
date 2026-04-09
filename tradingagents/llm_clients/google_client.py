@@ -1,9 +1,11 @@
+import time
 from typing import Any, Optional
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
+from tradingagents.observability import emit_llm_event
 
 
 class NormalizedChatGoogleGenerativeAI(ChatGoogleGenerativeAI):
@@ -14,7 +16,35 @@ class NormalizedChatGoogleGenerativeAI(ChatGoogleGenerativeAI):
     """
 
     def invoke(self, input, config=None, **kwargs):
-        return normalize_content(super().invoke(input, config, **kwargs))
+        started_at = time.monotonic()
+        provider = getattr(self, "_tradingagents_provider", "google")
+        model = getattr(self, "_tradingagents_model", getattr(self, "model", None))
+        emit_llm_event(
+            "llm.started",
+            llm_input=input,
+            provider=provider,
+            model=model,
+        )
+        try:
+            response = super().invoke(input, config, **kwargs)
+        except Exception as exc:
+            emit_llm_event(
+                "llm.failed",
+                llm_input=input,
+                duration_ms=int((time.monotonic() - started_at) * 1000),
+                provider=provider,
+                model=model,
+                error=exc,
+            )
+            raise
+
+        emit_llm_event(
+            "llm.completed",
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            provider=provider,
+            model=model,
+        )
+        return normalize_content(response)
 
 
 class GoogleClient(BaseLLMClient):
@@ -56,7 +86,10 @@ class GoogleClient(BaseLLMClient):
                 # Gemini 2.5: map to thinking_budget
                 llm_kwargs["thinking_budget"] = -1 if thinking_level == "high" else 0
 
-        return NormalizedChatGoogleGenerativeAI(**llm_kwargs)
+        llm = NormalizedChatGoogleGenerativeAI(**llm_kwargs)
+        llm._tradingagents_provider = "google"
+        llm._tradingagents_model = self.model
+        return llm
 
     def validate_model(self) -> bool:
         """Validate model for Google."""

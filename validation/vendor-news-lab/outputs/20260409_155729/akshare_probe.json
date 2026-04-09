@@ -1,0 +1,90 @@
+{
+  "hk_tencent": [
+    {
+      "symbol": "0700.HK",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "00700.HK",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "00700",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "700",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "腾讯控股",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "腾讯",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "Tencent Holdings",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "Tencent",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    }
+  ],
+  "cn_tongyuan": [
+    {
+      "symbol": "688679",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "688679.SH",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "SH.688679",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "通源环境",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "安徽通源环境",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    },
+    {
+      "symbol": "通源",
+      "status": "error",
+      "error_type": "ArrowInvalid",
+      "error": "Invalid regular expression: invalid escape sequence: \\u"
+    }
+  ]
+}

@@ -28,12 +28,53 @@ from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.dataflows.config import clear_runtime_context, set_runtime_context
 from tradingagents.observability import StageEventTracker
+from tradingagents.run_paths import resolve_results_run_dir
 from cli.models import AnalystType
 from cli.utils import *
 from cli.announcements import fetch_announcements, display_announcements
 from cli.stats_handler import StatsCallbackHandler
 
 console = Console()
+
+
+def _resolve_console(console_obj: Optional[Console] = None) -> Console:
+    """Return the provided console or the module-global console."""
+    return console_obj or console
+
+
+def _get_console_encoding(console_obj: Optional[Console] = None) -> str:
+    """Return the active console encoding with a safe default."""
+    console_obj = _resolve_console(console_obj)
+    encoding = getattr(getattr(console_obj, "file", None), "encoding", None)
+    return encoding or "utf-8"
+
+
+def _coerce_console_safe_text(text: str, console_obj: Optional[Console] = None) -> str:
+    """Replace characters the current console cannot encode."""
+    encoding = _get_console_encoding(console_obj)
+    return text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+
+
+def _safe_markup(text: str, console_obj: Optional[Console] = None) -> str:
+    """Return markup text that is safe for the current console encoding."""
+    return _coerce_console_safe_text(text, console_obj)
+
+
+def _supports_markdown_glyphs(console_obj: Optional[Console] = None) -> bool:
+    """Check whether the console can render Rich markdown bullets safely."""
+    try:
+        "•".encode(_get_console_encoding(console_obj))
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _render_console_markdown(text: str, console_obj: Optional[Console] = None):
+    """Render markdown when safe, otherwise fall back to plain text."""
+    safe_text = _coerce_console_safe_text(text, console_obj)
+    if _supports_markdown_glyphs(console_obj):
+        return Markdown(safe_text)
+    return Text(safe_text, overflow="fold")
 
 app = typer.Typer(
     name="TradingAgents",
@@ -259,9 +300,11 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     # Header with welcome message
     layout["header"].update(
         Panel(
-            "[bold green]Welcome to TradingAgents CLI[/bold green]\n"
-            "[dim]© [Tauric Research](https://github.com/TauricResearch)[/dim]",
-            title="Welcome to TradingAgents",
+            _safe_markup(
+                "[bold green]Welcome to TradingAgents CLI[/bold green]\n"
+                "[dim]© [Tauric Research](https://github.com/TauricResearch)[/dim]"
+            ),
+            title=_safe_markup("Welcome to TradingAgents"),
             border_style="green",
             padding=(1, 2),
             expand=True,
@@ -388,7 +431,7 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     # Add messages to table (already in newest-first order)
     for timestamp, msg_type, content in recent_messages:
         # Format content with word wrapping
-        wrapped_content = Text(content, overflow="fold")
+        wrapped_content = Text(_coerce_console_safe_text(content), overflow="fold")
         messages_table.add_row(timestamp, msg_type, wrapped_content)
 
     layout["messages"].update(
@@ -404,7 +447,7 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     if message_buffer.current_report:
         layout["analysis"].update(
             Panel(
-                Markdown(message_buffer.current_report),
+                _render_console_markdown(message_buffer.current_report),
                 title="Current Report",
                 border_style="green",
                 padding=(1, 2),
@@ -413,8 +456,8 @@ def update_display(layout, spinner_text=None, stats_handler=None, start_time=Non
     else:
         layout["analysis"].update(
             Panel(
-                "[italic]Waiting for analysis report...[/italic]",
-                title="Current Report",
+                _safe_markup("[italic]Waiting for analysis report...[/italic]"),
+                title=_safe_markup("Current Report"),
                 border_style="green",
                 padding=(1, 2),
             )
@@ -479,11 +522,11 @@ def get_user_selections():
 
     # Create and center the welcome box
     welcome_box = Panel(
-        welcome_content,
+        _safe_markup(welcome_content),
         border_style="green",
         padding=(1, 2),
-        title="Welcome to TradingAgents",
-        subtitle="Multi-Agents LLM Financial Trading Framework",
+        title=_safe_markup("Welcome to TradingAgents"),
+        subtitle=_safe_markup("Multi-Agents LLM Financial Trading Framework"),
     )
     console.print(Align.center(welcome_box))
     console.print()
@@ -499,7 +542,7 @@ def get_user_selections():
         box_content += f"[dim]{prompt}[/dim]"
         if default:
             box_content += f"\n[dim]Default: {default}[/dim]"
-        return Panel(box_content, border_style="blue", padding=(1, 2))
+        return Panel(_safe_markup(box_content), border_style="blue", padding=(1, 2))
 
     # Step 1: Ticker symbol
     console.print(
@@ -539,7 +582,9 @@ def get_user_selections():
     )
     selected_analysts = select_analysts()
     console.print(
-        f"[green]Selected analysts:[/green] {', '.join(analyst.value for analyst in selected_analysts)}"
+        _safe_markup(
+            f"[green]Selected analysts:[/green] {', '.join(analyst.value for analyst in selected_analysts)}"
+        )
     )
 
     # Step 5: Research depth
@@ -731,7 +776,7 @@ def save_report_to_disk(final_state, ticker: str, save_path: Path):
 def display_complete_report(final_state):
     """Display the complete analysis report sequentially (avoids truncation)."""
     console.print()
-    console.print(Rule("Complete Analysis Report", style="bold green"))
+    console.print(Rule(_safe_markup("Complete Analysis Report"), style="bold green"))
 
     # I. Analyst Team Reports
     analysts = []
@@ -744,9 +789,16 @@ def display_complete_report(final_state):
     if final_state.get("fundamentals_report"):
         analysts.append(("Fundamentals Analyst", final_state["fundamentals_report"]))
     if analysts:
-        console.print(Panel("[bold]I. Analyst Team Reports[/bold]", border_style="cyan"))
+        console.print(Panel(_safe_markup("[bold]I. Analyst Team Reports[/bold]"), border_style="cyan"))
         for title, content in analysts:
-            console.print(Panel(Markdown(content), title=title, border_style="blue", padding=(1, 2)))
+            console.print(
+                Panel(
+                    _render_console_markdown(content),
+                    title=_safe_markup(title),
+                    border_style="blue",
+                    padding=(1, 2),
+                )
+            )
 
     # II. Research Team Reports
     if final_state.get("investment_debate_state"):
@@ -759,14 +811,28 @@ def display_complete_report(final_state):
         if debate.get("judge_decision"):
             research.append(("Research Manager", debate["judge_decision"]))
         if research:
-            console.print(Panel("[bold]II. Research Team Decision[/bold]", border_style="magenta"))
+            console.print(Panel(_safe_markup("[bold]II. Research Team Decision[/bold]"), border_style="magenta"))
             for title, content in research:
-                console.print(Panel(Markdown(content), title=title, border_style="blue", padding=(1, 2)))
+                console.print(
+                    Panel(
+                        _render_console_markdown(content),
+                        title=_safe_markup(title),
+                        border_style="blue",
+                        padding=(1, 2),
+                    )
+                )
 
     # III. Trading Team
     if final_state.get("trader_investment_plan"):
-        console.print(Panel("[bold]III. Trading Team Plan[/bold]", border_style="yellow"))
-        console.print(Panel(Markdown(final_state["trader_investment_plan"]), title="Trader", border_style="blue", padding=(1, 2)))
+        console.print(Panel(_safe_markup("[bold]III. Trading Team Plan[/bold]"), border_style="yellow"))
+        console.print(
+            Panel(
+                _render_console_markdown(final_state["trader_investment_plan"]),
+                title=_safe_markup("Trader"),
+                border_style="blue",
+                padding=(1, 2),
+            )
+        )
 
     # IV. Risk Management Team
     if final_state.get("risk_debate_state"):
@@ -779,14 +845,28 @@ def display_complete_report(final_state):
         if risk.get("neutral_history"):
             risk_reports.append(("Neutral Analyst", risk["neutral_history"]))
         if risk_reports:
-            console.print(Panel("[bold]IV. Risk Management Team Decision[/bold]", border_style="red"))
+            console.print(Panel(_safe_markup("[bold]IV. Risk Management Team Decision[/bold]"), border_style="red"))
             for title, content in risk_reports:
-                console.print(Panel(Markdown(content), title=title, border_style="blue", padding=(1, 2)))
+                console.print(
+                    Panel(
+                        _render_console_markdown(content),
+                        title=_safe_markup(title),
+                        border_style="blue",
+                        padding=(1, 2),
+                    )
+                )
 
         # V. Portfolio Manager Decision
         if risk.get("judge_decision"):
-            console.print(Panel("[bold]V. Portfolio Manager Decision[/bold]", border_style="green"))
-            console.print(Panel(Markdown(risk["judge_decision"]), title="Portfolio Manager", border_style="blue", padding=(1, 2)))
+            console.print(Panel(_safe_markup("[bold]V. Portfolio Manager Decision[/bold]"), border_style="green"))
+            console.print(
+                Panel(
+                    _render_console_markdown(risk["judge_decision"]),
+                    title=_safe_markup("Portfolio Manager"),
+                    border_style="blue",
+                    padding=(1, 2),
+                )
+            )
 
 
 def update_research_team_status(status):
@@ -1010,6 +1090,28 @@ def run_analysis():
     config["anthropic_effort"] = selections.get("anthropic_effort")
     config["output_language"] = selections.get("output_language", "English")
 
+    run_started_at = datetime.datetime.now()
+    results_dir = resolve_results_run_dir(
+        config["results_dir"],
+        selections["ticker"],
+        run_started_at,
+    )
+    results_dir.mkdir(parents=True, exist_ok=True)
+    report_dir = results_dir / "reports"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    log_file = results_dir / "message_tool.log"
+    log_file.touch(exist_ok=True)
+    run_id = f"{selections['ticker']}-{uuid.uuid4().hex[:12]}"
+    clear_runtime_context()
+    set_runtime_context(
+        ticker=selections["ticker"],
+        trade_date=str(selections["analysis_date"]),
+        run_id=run_id,
+        trace_dir=str(results_dir),
+        run_started_at_iso=run_started_at.isoformat(),
+        run_dir_name=results_dir.name,
+    )
+
     # Create stats callback handler for tracking LLM/tool calls
     stats_handler = StatsCallbackHandler()
 
@@ -1029,23 +1131,8 @@ def run_analysis():
     message_buffer.init_for_analysis(selected_analyst_keys)
 
     # Track start time for elapsed display
-    start_time = time.time()
+    start_time = run_started_at.timestamp()
 
-    # Create result directory
-    results_dir = Path(config["results_dir"]) / selections["ticker"] / selections["analysis_date"]
-    results_dir.mkdir(parents=True, exist_ok=True)
-    report_dir = results_dir / "reports"
-    report_dir.mkdir(parents=True, exist_ok=True)
-    log_file = results_dir / "message_tool.log"
-    log_file.touch(exist_ok=True)
-    run_id = f"{selections['ticker']}-{uuid.uuid4().hex[:12]}"
-    clear_runtime_context()
-    set_runtime_context(
-        ticker=selections["ticker"],
-        trade_date=str(selections["analysis_date"]),
-        run_id=run_id,
-        trace_dir=str(results_dir),
-    )
     stage_tracker = StageEventTracker(
         config=config,
         runtime_context={
@@ -1053,6 +1140,8 @@ def run_analysis():
             "trace_dir": str(results_dir),
             "ticker": selections["ticker"],
             "trade_date": str(selections["analysis_date"]),
+            "run_started_at_iso": run_started_at.isoformat(),
+            "run_dir_name": results_dir.name,
         },
     )
     stage_tracker.start_watchdog()
@@ -1289,10 +1378,11 @@ def run_analysis():
         raise
     finally:
         stage_tracker.stop_watchdog()
+        graph.stop_observers()
         clear_runtime_context()
 
     # Post-analysis prompts (outside Live context for clean interaction)
-    console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
+    console.print(_safe_markup("\n[bold cyan]Analysis Complete![/bold cyan]\n"))
 
     # Prompt to save report
     save_choice = typer.prompt("Save report?", default="Y").strip().upper()
@@ -1306,10 +1396,10 @@ def run_analysis():
         save_path = Path(save_path_str)
         try:
             report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
-            console.print(f"\n[green]Report saved to:[/green] {save_path.resolve()}")
-            console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
+            console.print(_safe_markup(f"\n[green]Report saved to:[/green] {save_path.resolve()}"))
+            console.print(_safe_markup(f"  [dim]Complete report:[/dim] {report_file.name}"))
         except Exception as e:
-            console.print(f"[red]Error saving report: {e}[/red]")
+            console.print(_safe_markup(f"[red]Error saving report: {e}[/red]"))
 
     # Prompt to display full report
     display_choice = typer.prompt("\nDisplay full report on screen?", default="Y").strip().upper()

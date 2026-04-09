@@ -1,0 +1,62 @@
+[
+  {
+    "case_id": "cn_tongyuan_environment",
+    "market": "cn",
+    "ticker": "688679",
+    "label": "通源环境",
+    "analysis_date": "2026-04-09",
+    "start_date": "2026-04-02",
+    "end_date": "2026-04-09",
+    "company_name_local": "通源环境",
+    "company_name_en": "Tongyuan Environment",
+    "aliases": ["安徽通源环境"],
+    "candidate_keywords": [
+      {"role": "company_short_name", "value": "通源", "source": "manifest"},
+      {"role": "ticker_symbol", "value": "688679.SH", "source": "manifest"}
+    ],
+    "notes": "用于验证 A 股个股新闻 vendor 与关键词泛化覆盖率。",
+    "metadata": {
+      "exchange_hint": "SH"
+    }
+  },
+  {
+    "case_id": "hk_tencent_holdings",
+    "market": "hk",
+    "ticker": "0700.HK",
+    "label": "腾讯控股",
+    "analysis_date": "2026-04-09",
+    "start_date": "2026-04-02",
+    "end_date": "2026-04-09",
+    "company_name_local": "腾讯控股",
+    "company_name_en": "Tencent Holdings",
+    "aliases": ["腾讯", "Tencent"],
+    "candidate_keywords": [
+      {"role": "ticker_numeric_padded", "value": "00700", "source": "manifest"},
+      {"role": "ticker_numeric_compact", "value": "700", "source": "manifest"}
+    ],
+    "notes": "用于验证港股个股新闻的 symbol 与名称泛化策略。",
+    "metadata": {
+      "exchange_hint": "HK"
+    }
+  },
+  {
+    "case_id": "us_apple",
+    "market": "us",
+    "ticker": "AAPL",
+    "label": "Apple Inc.",
+    "analysis_date": "2026-04-09",
+    "start_date": "2026-04-02",
+    "end_date": "2026-04-09",
+    "company_name_local": "苹果公司",
+    "company_name_en": "Apple Inc.",
+    "aliases": ["Apple"],
+    "candidate_keywords": [
+      {"role": "brand_name", "value": "iPhone", "source": "manifest"},
+      {"role": "ticker_us_prefix", "value": "US.AAPL", "source": "manifest"}
+    ],
+    "notes": "用于验证美股个股新闻 vendor 与品牌名泛化效果。",
+    "metadata": {
+      "exchange_hint": "NASDAQ"
+    }
+  }
+]

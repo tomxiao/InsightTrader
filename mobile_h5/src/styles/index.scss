@@ -1,0 +1,33 @@
+@use './reset.scss';
+@use './vant-overrides.scss';
+
+body {
+  line-height: 1.5;
+}
+
+.mobile-page {
+  min-height: 100vh;
+  background: var(--mobile-color-bg);
+}
+
+.mobile-page__content {
+  padding: var(--mobile-space-lg) var(--mobile-space-md)
+    calc(var(--mobile-space-lg) + var(--mobile-safe-bottom));
+}
+
+.mobile-card {
+  background: var(--mobile-color-surface);
+  border-radius: var(--mobile-radius-lg);
+  box-shadow: 0 8px 24px var(--mobile-color-shadow);
+  padding: var(--mobile-space-lg);
+}
+
+.mobile-title {
+  margin: 0 0 var(--mobile-space-xs);
+  font-size: var(--mobile-font-size-xl);
+}
+
+.mobile-description {
+  margin: 0;
+  color: var(--mobile-color-text-secondary);
+}

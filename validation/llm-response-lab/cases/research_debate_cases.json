@@ -1,0 +1,20 @@
+[
+  {
+    "case_id": "research_debate_bull",
+    "label": "Bull Researcher",
+    "source_path": "results/688679_2026_0409_1349_02/llm_inputs/research.debate/001_Bull_Researcher.json",
+    "source_field": "input"
+  },
+  {
+    "case_id": "research_debate_bear",
+    "label": "Bear Researcher",
+    "source_path": "results/688679_2026_0409_1349_02/llm_inputs/research.debate/002_Bear_Researcher.json",
+    "source_field": "input"
+  },
+  {
+    "case_id": "research_debate_manager",
+    "label": "Research Manager",
+    "source_path": "results/688679_2026_0409_1349_02/llm_inputs/research.debate/003_Research_Manager.json",
+    "source_field": "input"
+  }
+]

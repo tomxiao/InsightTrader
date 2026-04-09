@@ -1,10 +1,12 @@
 import os
+import time
 from typing import Any, Optional
 
 from langchain_anthropic import ChatAnthropic
 
 from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
+from tradingagents.observability import emit_llm_event
 
 _ANTHROPIC_PASSTHROUGH_KWARGS = (
     "timeout", "max_retries", "api_key", "max_tokens",
@@ -35,7 +37,35 @@ class NormalizedChatAnthropic(ChatAnthropic):
     """
 
     def invoke(self, input, config=None, **kwargs):
-        return normalize_content(super().invoke(input, config, **kwargs))
+        started_at = time.monotonic()
+        provider = getattr(self, "_tradingagents_provider", "anthropic")
+        model = getattr(self, "_tradingagents_model", getattr(self, "model", None))
+        emit_llm_event(
+            "llm.started",
+            llm_input=input,
+            provider=provider,
+            model=model,
+        )
+        try:
+            response = super().invoke(input, config, **kwargs)
+        except Exception as exc:
+            emit_llm_event(
+                "llm.failed",
+                llm_input=input,
+                duration_ms=int((time.monotonic() - started_at) * 1000),
+                provider=provider,
+                model=model,
+                error=exc,
+            )
+            raise
+
+        emit_llm_event(
+            "llm.completed",
+            duration_ms=int((time.monotonic() - started_at) * 1000),
+            provider=provider,
+            model=model,
+        )
+        return normalize_content(response)
 
 
 class AnthropicClient(BaseLLMClient):
@@ -73,7 +103,10 @@ class AnthropicClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
-        return NormalizedChatAnthropic(**llm_kwargs)
+        llm = NormalizedChatAnthropic(**llm_kwargs)
+        llm._tradingagents_provider = self.provider
+        llm._tradingagents_model = self.model
+        return llm
 
     def validate_model(self) -> bool:
         """Validate model for the configured Anthropic-compatible provider."""
