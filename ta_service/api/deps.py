@@ -1,0 +1,111 @@
+from __future__ import annotations
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from ta_service.config.settings import Settings, get_settings
+from ta_service.repos.analysis_tasks import AnalysisTaskRepository
+from ta_service.repos.conversations import ConversationRepository
+from ta_service.repos.messages import MessageRepository
+from ta_service.repos.reports import ReportRepository
+from ta_service.repos.users import UserRepository
+from ta_service.services.analysis_service import AnalysisService
+from ta_service.services.auth_service import AuthService
+from ta_service.services.conversation_service import ConversationService
+from ta_service.services.report_service import ReportService
+from ta_service.workers.queue import AnalysisJobQueue
+
+security = HTTPBearer(auto_error=False)
+
+
+def get_app_state(request: Request):
+    return request.app.state
+
+
+def get_mongo_db(request: Request):
+    return get_app_state(request).mongo_db
+
+
+def get_redis(request: Request):
+    return get_app_state(request).redis
+
+
+def get_user_repository(request: Request) -> UserRepository:
+    return UserRepository(get_mongo_db(request))
+
+
+def get_conversation_repository(request: Request) -> ConversationRepository:
+    return ConversationRepository(get_mongo_db(request))
+
+
+def get_message_repository(request: Request) -> MessageRepository:
+    return MessageRepository(get_mongo_db(request))
+
+
+def get_analysis_task_repository(request: Request) -> AnalysisTaskRepository:
+    return AnalysisTaskRepository(get_mongo_db(request))
+
+
+def get_report_repository(request: Request) -> ReportRepository:
+    return ReportRepository(get_mongo_db(request))
+
+
+def get_settings_dependency() -> Settings:
+    return get_settings()
+
+
+def get_job_queue(
+    request: Request,
+    settings: Settings = Depends(get_settings_dependency),
+) -> AnalysisJobQueue:
+    return AnalysisJobQueue(get_redis(request), settings)
+
+
+def get_auth_service(
+    user_repo: UserRepository = Depends(get_user_repository),
+    settings: Settings = Depends(get_settings_dependency),
+) -> AuthService:
+    return AuthService(user_repo=user_repo, settings=settings)
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    auth_service: AuthService = Depends(get_auth_service),
+):
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+
+    user = auth_service.get_current_user(credentials.credentials)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+    return user
+
+
+def get_conversation_service(
+    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
+    message_repo: MessageRepository = Depends(get_message_repository),
+) -> ConversationService:
+    return ConversationService(
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+    )
+
+
+def get_analysis_service(
+    task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
+    report_repo: ReportRepository = Depends(get_report_repository),
+    queue: AnalysisJobQueue = Depends(get_job_queue),
+    settings: Settings = Depends(get_settings_dependency),
+) -> AnalysisService:
+    return AnalysisService(
+        task_repo=task_repo,
+        report_repo=report_repo,
+        queue=queue,
+        settings=settings,
+    )
+
+
+def get_report_service(
+    report_repo: ReportRepository = Depends(get_report_repository),
+) -> ReportService:
+    return ReportService(report_repo=report_repo)

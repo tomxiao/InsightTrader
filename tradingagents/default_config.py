@@ -22,7 +22,7 @@ DEFAULT_CONFIG = {
     "anthropic_effort": None,  # "high", "medium", "low" (Anthropic only, not used for MiniMax)
     # Output language for user-visible reports, plans, and final decision
     # Internal agent debate can stay in English for reasoning quality
-    "output_language": "English",
+    "output_language": "Chinese",
     # Debate and discussion settings
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,

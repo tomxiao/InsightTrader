@@ -12,6 +12,7 @@ dependencies = [
     "akshare>=1.18.46",
     "langchain-core>=0.3.81",
     "backtrader>=1.9.78.123",
+    "fastapi",
     "finnhub-python>=2.4.27",
     "langchain-anthropic>=0.3.15",
     "langchain-experimental>=0.3.4",
@@ -21,6 +22,7 @@ dependencies = [
     "moomoo-api>=10.1.6108",
     "pandas>=2.3.0",
     "parsel>=1.10.0",
+    "pymongo",
     "python-dateutil>=2.9.0.post0",
     "python-dotenv>=1.1.0",
     "pytz>=2025.2",
@@ -35,6 +37,7 @@ dependencies = [
     "tushare>=1.4.29",
     "tqdm>=4.67.1",
     "typing-extensions>=4.14.0",
+    "uvicorn",
     "yfinance>=0.2.63",
 ]
 
@@ -47,9 +50,10 @@ dev = [
 
 [project.scripts]
 tradingagents = "cli.main:app"
+ta-service = "ta_service.main:run"
 
 [tool.setuptools.packages.find]
-include = ["tradingagents*", "cli*"]
+include = ["tradingagents*", "cli*", "ta_service*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
