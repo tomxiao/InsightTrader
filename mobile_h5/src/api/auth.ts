@@ -3,6 +3,6 @@ import { request } from './request'
 
 export const authApi = {
   login(payload: LoginRequest) {
-    return request.post<LoginResponse>('/auth/login', payload)
+    return request.post<LoginResponse>('/auth/login', payload).then(response => response.data)
   }
 }

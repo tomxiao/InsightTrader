@@ -1,20 +1,31 @@
 :root {
-  --mobile-color-bg: #f7f8fa;
-  --mobile-color-surface: #ffffff;
-  --mobile-color-text: #1f2329;
-  --mobile-color-text-secondary: #646a73;
-  --mobile-color-primary: #1677ff;
-  --mobile-color-border: #e5e6eb;
-  --mobile-color-shadow: rgba(31, 35, 41, 0.08);
+  --mobile-color-bg: #121316;
+  --mobile-color-bg-elevated: #17191f;
+  --mobile-color-surface: #1b1e24;
+  --mobile-color-surface-strong: #242934;
+  --mobile-color-surface-soft: rgba(255, 255, 255, 0.03);
+  --mobile-color-text: #f7f8fa;
+  --mobile-color-text-secondary: #c0c6d4;
+  --mobile-color-text-tertiary: #9099ac;
+  --mobile-color-primary: #5d8bff;
+  --mobile-color-primary-soft: rgba(93, 139, 255, 0.14);
+  --mobile-color-primary-strong: #9ab6ff;
+  --mobile-color-border: rgba(255, 255, 255, 0.1);
+  --mobile-color-success: #28c76f;
+  --mobile-color-warning: #f5a524;
+  --mobile-color-danger: #ff6b6b;
+  --mobile-color-shadow: rgba(0, 0, 0, 0.22);
 
-  --mobile-radius-sm: 12px;
-  --mobile-radius-md: 16px;
-  --mobile-radius-lg: 20px;
+  --mobile-radius-sm: 14px;
+  --mobile-radius-md: 18px;
+  --mobile-radius-lg: 26px;
+  --mobile-radius-xl: 32px;
 
   --mobile-space-xs: 8px;
   --mobile-space-sm: 12px;
   --mobile-space-md: 16px;
   --mobile-space-lg: 24px;
+  --mobile-space-xl: 32px;
 
   --mobile-font-size-sm: 14px;
   --mobile-font-size-md: 16px;

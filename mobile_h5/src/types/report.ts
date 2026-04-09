@@ -4,3 +4,8 @@ export interface ReportSummary {
   title?: string
   summary?: string
 }
+
+export interface ReportDetail extends ReportSummary {
+  executiveSummary?: string
+  contentMarkdown?: string
+}

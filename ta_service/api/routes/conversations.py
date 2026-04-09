@@ -6,6 +6,8 @@ from ta_service.api.deps import get_conversation_service, get_current_user
 from ta_service.models.auth import MobileUser
 from ta_service.models.conversation import (
     ConversationDetail,
+    PostConversationMessageRequest,
+    PostConversationMessageResponse,
     ConversationSummary,
     CreateConversationRequest,
 )
@@ -49,13 +51,15 @@ def get_conversation(
     return conversation
 
 
-@router.post("/{conversation_id}/messages", status_code=status.HTTP_501_NOT_IMPLEMENTED)
+@router.post("/{conversation_id}/messages", response_model=PostConversationMessageResponse)
 def post_conversation_message(
     conversation_id: str,
+    payload: PostConversationMessageRequest,
     current_user: MobileUser = Depends(get_current_user),
-) -> dict:
-    return {
-        "conversationId": conversation_id,
-        "userId": current_user.id,
-        "detail": "Conversation message workflow is reserved for the next contract alignment step.",
-    }
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> PostConversationMessageResponse:
+    return conversation_service.post_message(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        message=payload.message,
+    )

@@ -4,6 +4,13 @@ import { storage } from '@utils/storage'
 
 const TOKEN_KEY = 'frontend_mobile_access_token'
 const USER_KEY = 'frontend_mobile_user'
+const EXTRA_KEYS = [
+  'frontend_mobile_current_task',
+  'frontend_mobile_task_draft',
+  'frontend_mobile_current_conversation',
+  'frontend_mobile_conversation_list',
+  'frontend_mobile_drawer_open'
+]
 
 export const useAuthStore = defineStore('mobile-auth', {
   state: () => ({
@@ -25,6 +32,7 @@ export const useAuthStore = defineStore('mobile-auth', {
       this.user = null
       storage.remove(TOKEN_KEY)
       storage.remove(USER_KEY)
+      EXTRA_KEYS.forEach(key => storage.remove(key))
     }
   }
 })

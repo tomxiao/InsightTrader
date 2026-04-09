@@ -23,6 +23,10 @@ request.interceptors.response.use(
     if (error.response?.status === 401) {
       const authStore = useAuthStore()
       authStore.clearAuth()
+
+      if (typeof window !== 'undefined') {
+        window.location.replace('/login')
+      }
     }
 
     return Promise.reject(error)

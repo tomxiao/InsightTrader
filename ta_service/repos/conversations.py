@@ -54,3 +54,21 @@ class ConversationRepository:
             {"id": conversation_id, "userId": user_id},
             {"$set": update},
         )
+
+    def update_metadata(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        title: str | None = None,
+        status: str | None = None,
+    ) -> None:
+        update = {"updatedAt": _utc_now_iso()}
+        if title is not None:
+            update["title"] = title
+        if status is not None:
+            update["status"] = status
+        self.collection.update_one(
+            {"id": conversation_id, "userId": user_id},
+            {"$set": update},
+        )

@@ -1,14 +1,99 @@
 import { defineStore } from 'pinia'
+import type { ConversationDetail, ConversationMessage, ConversationSummary } from '@/types/conversation'
+import { storage } from '@utils/storage'
+
+const CURRENT_CONVERSATION_KEY = 'frontend_mobile_current_conversation'
+const CONVERSATION_LIST_KEY = 'frontend_mobile_conversation_list'
+const DRAWER_KEY = 'frontend_mobile_drawer_open'
+
+const emptyConversation: ConversationDetail = {
+  id: '',
+  title: '新会话',
+  status: 'idle',
+  updatedAt: '',
+  lastReportId: null,
+  currentTaskId: null,
+  messages: []
+}
 
 export const useConversationStore = defineStore('mobile-conversation', {
   state: () => ({
-    currentConversationId: '',
-    currentTitle: '新会话'
+    conversations: storage.get<ConversationSummary[]>(CONVERSATION_LIST_KEY, []),
+    currentConversation: storage.get<ConversationDetail>(CURRENT_CONVERSATION_KEY, { ...emptyConversation }),
+    isDrawerOpen: storage.get<boolean>(DRAWER_KEY, false),
+    isLoading: false
   }),
+  getters: {
+    currentConversationId: state => state.currentConversation.id,
+    currentTitle: state => state.currentConversation.title || '新会话',
+    currentMessages: state => state.currentConversation.messages
+  },
   actions: {
-    setConversation(id: string, title = '新会话') {
-      this.currentConversationId = id
-      this.currentTitle = title
+    setConversations(items: ConversationSummary[]) {
+      this.conversations = items
+      storage.set(CONVERSATION_LIST_KEY, items)
+    },
+    upsertConversation(summary: ConversationSummary) {
+      const index = this.conversations.findIndex(item => item.id === summary.id)
+      if (index >= 0) {
+        this.conversations.splice(index, 1, summary)
+      } else {
+        this.conversations.unshift(summary)
+      }
+      this.conversations.sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+      storage.set(CONVERSATION_LIST_KEY, this.conversations)
+    },
+    setCurrentConversation(detail: ConversationDetail) {
+      this.currentConversation = detail
+      storage.set(CURRENT_CONVERSATION_KEY, detail)
+      this.upsertConversation({
+        id: detail.id,
+        title: detail.title,
+        status: detail.status,
+        updatedAt: detail.updatedAt,
+        lastReportId: detail.lastReportId,
+        currentTaskId: detail.currentTaskId
+      })
+    },
+    appendMessages(messages: ConversationMessage[]) {
+      this.currentConversation.messages.push(...messages)
+      storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)
+    },
+    updateConversationStatus(
+      status: ConversationDetail['status'],
+      currentTaskId?: string | null,
+      lastReportId?: string | null
+    ) {
+      this.currentConversation.status = status
+      if (typeof currentTaskId !== 'undefined') {
+        this.currentConversation.currentTaskId = currentTaskId
+      }
+      if (typeof lastReportId !== 'undefined') {
+        this.currentConversation.lastReportId = lastReportId
+      }
+      this.currentConversation.updatedAt = new Date().toISOString()
+      if (this.currentConversation.id) {
+        this.upsertConversation({
+          id: this.currentConversation.id,
+          title: this.currentConversation.title,
+          status: this.currentConversation.status,
+          updatedAt: this.currentConversation.updatedAt,
+          lastReportId: this.currentConversation.lastReportId,
+          currentTaskId: this.currentConversation.currentTaskId
+        })
+      }
+      storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)
+    },
+    setDrawerOpen(open: boolean) {
+      this.isDrawerOpen = open
+      storage.set(DRAWER_KEY, open)
+    },
+    setLoading(value: boolean) {
+      this.isLoading = value
+    },
+    resetCurrentConversation() {
+      this.currentConversation = { ...emptyConversation }
+      storage.remove(CURRENT_CONVERSATION_KEY)
     }
   }
 })

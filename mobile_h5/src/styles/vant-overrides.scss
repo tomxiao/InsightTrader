@@ -1,11 +1,78 @@
+:root {
+  --van-text-color: var(--mobile-color-text);
+  --van-primary-color: var(--mobile-color-primary);
+  --van-success-color: var(--mobile-color-success);
+  --van-danger-color: var(--mobile-color-danger);
+  --van-warning-color: var(--mobile-color-warning);
+  --van-background-2: var(--mobile-color-surface);
+  --van-background-3: var(--mobile-color-surface-strong);
+  --van-border-color: var(--mobile-color-border);
+  --van-gray-6: var(--mobile-color-text-tertiary);
+  --van-gray-7: var(--mobile-color-text-secondary);
+  --van-field-placeholder-text-color: var(--mobile-color-text-tertiary);
+  --van-cell-background: transparent;
+  --van-cell-text-color: var(--mobile-color-text);
+  --van-popup-background: var(--mobile-color-bg-elevated);
+}
+
 .van-button {
-  border-radius: var(--mobile-radius-md);
+  border-radius: 999px;
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.van-button--primary {
+  background: linear-gradient(180deg, #6d96ff 0%, #4f79ff 100%);
+  box-shadow: 0 8px 18px rgba(79, 121, 255, 0.28);
+}
+
+.van-button--default,
+.van-button--primary.van-button--plain {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--mobile-color-text);
+  border: 1px solid var(--mobile-color-border);
+  box-shadow: none;
+}
+
+.van-button--danger {
+  box-shadow: none;
 }
 
 .van-dialog {
   border-radius: var(--mobile-radius-lg);
+  background: var(--mobile-color-surface);
+  color: var(--mobile-color-text);
 }
 
 .van-field {
   border-radius: var(--mobile-radius-md);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--mobile-color-text);
+}
+
+.van-field__control,
+.van-field__control::placeholder,
+.van-field__label,
+.van-cell__title,
+.van-cell__value {
+  color: inherit;
+}
+
+.van-cell-group,
+.van-cell {
+  background: transparent;
+}
+
+.van-popup {
+  background: var(--mobile-color-bg-elevated);
+}
+
+.van-skeleton__row,
+.van-skeleton__title {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.06) 25%,
+    rgba(255, 255, 255, 0.12) 37%,
+    rgba(255, 255, 255, 0.06) 63%
+  );
 }

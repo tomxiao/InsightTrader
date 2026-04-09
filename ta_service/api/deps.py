@@ -84,21 +84,27 @@ def get_current_user(
 def get_conversation_service(
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
+    report_repo: ReportRepository = Depends(get_report_repository),
 ) -> ConversationService:
     return ConversationService(
         conversation_repo=conversation_repo,
         message_repo=message_repo,
+        report_repo=report_repo,
     )
 
 
 def get_analysis_service(
     task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
+    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
+    message_repo: MessageRepository = Depends(get_message_repository),
     report_repo: ReportRepository = Depends(get_report_repository),
     queue: AnalysisJobQueue = Depends(get_job_queue),
     settings: Settings = Depends(get_settings_dependency),
 ) -> AnalysisService:
     return AnalysisService(
         task_repo=task_repo,
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
         report_repo=report_repo,
         queue=queue,
         settings=settings,

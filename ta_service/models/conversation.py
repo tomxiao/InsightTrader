@@ -26,3 +26,12 @@ class ConversationDetail(ConversationSummary):
 
 class CreateConversationRequest(BaseModel):
     title: str | None = None
+
+
+class PostConversationMessageRequest(BaseModel):
+    message: str
+
+
+class PostConversationMessageResponse(BaseModel):
+    messages: list[ConversationMessage] = Field(default_factory=list)
+    reportId: str | None = None

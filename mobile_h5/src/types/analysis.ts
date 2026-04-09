@@ -8,4 +8,13 @@ export interface AnalysisTaskSummary {
   message?: string
   elapsedTime?: number
   remainingTime?: number
+  reportId?: string
+}
+
+export interface CreateAnalysisTaskRequest {
+  conversationId: string
+  ticker: string
+  tradeDate: string
+  prompt?: string
+  selectedAnalysts?: string[]
 }

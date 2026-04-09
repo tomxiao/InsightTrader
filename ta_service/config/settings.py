@@ -35,6 +35,14 @@ class Settings:
     default_output_language: str = os.getenv(
         "TA_SERVICE_DEFAULT_OUTPUT_LANGUAGE", "Chinese"
     )
+    cors_origins: tuple[str, ...] = tuple(
+        origin.strip()
+        for origin in os.getenv(
+            "TA_SERVICE_CORS_ORIGINS",
+            "http://127.0.0.1:5175,http://localhost:5175",
+        ).split(",")
+        if origin.strip()
+    )
 
 
 @lru_cache(maxsize=1)

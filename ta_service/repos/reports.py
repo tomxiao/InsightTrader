@@ -48,3 +48,10 @@ class ReportRepository:
 
     def get_by_id(self, report_id: str) -> dict | None:
         return self.collection.find_one({"id": report_id}, {"_id": 0})
+
+    def get_latest_for_conversation(self, *, conversation_id: str, user_id: str) -> dict | None:
+        return self.collection.find_one(
+            {"conversationId": conversation_id, "userId": user_id},
+            {"_id": 0},
+            sort=[("createdAt", -1)],
+        )
