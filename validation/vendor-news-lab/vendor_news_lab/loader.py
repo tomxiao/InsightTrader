@@ -127,7 +127,9 @@ def load_vendor_configs(config_path: str | Path) -> list[VendorConfig]:
             VendorConfig(
                 vendor_key=str(item["vendor_key"]).strip().lower(),
                 display_name=str(item["display_name"]).strip(),
-                markets_supported=[str(market).strip().lower() for market in item.get("markets_supported", [])],
+                markets_supported=[
+                    str(market).strip().lower() for market in item.get("markets_supported", [])
+                ],
                 news_mode=str(item["news_mode"]).strip(),
                 requires_api_key_env=(
                     str(item["requires_api_key_env"]).strip()

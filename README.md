@@ -118,6 +118,16 @@ Install the package and its dependencies:
 pip install .
 ```
 
+For local development, install the editable package together with the tools used by the local CI workflow:
+```bash
+pip install -e ".[dev]"
+```
+
+Install the git hooks once per clone:
+```bash
+pre-commit install
+```
+
 ### Docker
 
 Alternatively, run with Docker:
@@ -212,6 +222,36 @@ An interface will appear showing results as they load, letting you track the age
   <img src="assets/cli/cli_transaction.png" width="100%" style="display: inline-block; margin: 0 2%;">
 </p>
 
+## Development Workflow
+
+Run the local CI workflow before committing changes:
+
+```bash
+python scripts/local_ci.py
+```
+
+By default, the script auto-fixes Python formatting and simple lint issues before running the remaining checks.
+If you want a check-only run without auto-fixes, use:
+
+```bash
+python scripts/local_ci.py --no-fix
+```
+
+The script executes these steps in order:
+
+- `ruff check`
+- `python -m unittest discover -s tests -p "test_*.py"`
+- `python -m build`
+
+By default, it first runs `ruff format` and `ruff check --fix`, then executes the same lint, test, and build flow. Use `--no-fix` to skip the auto-fix step.
+The repository-wide lint step is intentionally minimal so the full local CI remains usable on the current codebase, while `pre-commit` applies stricter checks to the files you are actively changing.
+
+You can also run the configured hooks manually across the full repository:
+
+```bash
+pre-commit run --all-files
+```
+
 ## TradingAgents Package
 
 ### Implementation Details
@@ -266,6 +306,12 @@ See `tradingagents/default_config.py` for all configuration options.
 ## Contributing
 
 We welcome contributions from the community! Whether it's fixing a bug, improving documentation, or suggesting a new feature, your input helps make this project better. If you are interested in this line of research, please consider joining our open-source financial AI research community [Tauric Research](https://tauric.ai/).
+
+For local changes, the recommended minimum workflow is:
+
+1. `pip install -e ".[dev]"`
+2. `pre-commit install`
+3. `python scripts/local_ci.py`
 
 ## Citation
 

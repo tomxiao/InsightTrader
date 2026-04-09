@@ -1,27 +1,33 @@
+import importlib
 import json
 import sys
 import tempfile
 import unittest
-from unittest import mock
 from pathlib import Path
+from unittest import mock
 
 import pandas as pd
 
 from tradingagents.dataflows.formatting import format_dataframe_report
 
-
 VALIDATION_ROOT = Path(__file__).resolve().parents[1] / "validation" / "vendor-news-lab"
 if str(VALIDATION_ROOT) not in sys.path:
     sys.path.insert(0, str(VALIDATION_ROOT))
 
-from vendor_news_lab import MarketNewsCase, NewsValidationRunner, VendorConfig, build_keyword_variants
-from vendor_news_lab.loader import load_news_cases, load_vendor_configs
-from vendor_news_lab.runner import (
-    UnsupportedValidationError,
-    _build_akshare_symbol_candidates,
-    _build_keyword_matcher,
-    _fetch_akshare_keyword_news,
-)
+vendor_news_lab = importlib.import_module("vendor_news_lab")
+vendor_news_lab_loader = importlib.import_module("vendor_news_lab.loader")
+vendor_news_lab_runner = importlib.import_module("vendor_news_lab.runner")
+
+MarketNewsCase = vendor_news_lab.MarketNewsCase
+NewsValidationRunner = vendor_news_lab.NewsValidationRunner
+VendorConfig = vendor_news_lab.VendorConfig
+build_keyword_variants = vendor_news_lab.build_keyword_variants
+load_news_cases = vendor_news_lab_loader.load_news_cases
+load_vendor_configs = vendor_news_lab_loader.load_vendor_configs
+UnsupportedValidationError = vendor_news_lab_runner.UnsupportedValidationError
+_build_akshare_symbol_candidates = vendor_news_lab_runner._build_akshare_symbol_candidates
+_build_keyword_matcher = vendor_news_lab_runner._build_keyword_matcher
+_fetch_akshare_keyword_news = vendor_news_lab_runner._fetch_akshare_keyword_news
 
 
 class VendorNewsLabTests(unittest.TestCase):
@@ -44,8 +50,8 @@ class VendorNewsLabTests(unittest.TestCase):
                             "aliases": ["通源", "通源"],
                             "candidate_keywords": [
                                 {"role": "ticker_symbol", "value": "688679.SH"},
-                                {"role": "ticker_symbol", "value": "688679.SH"}
-                            ]
+                                {"role": "ticker_symbol", "value": "688679.SH"},
+                            ],
                         }
                     ],
                     ensure_ascii=False,
@@ -60,7 +66,7 @@ class VendorNewsLabTests(unittest.TestCase):
                             "display_name": "AKShare",
                             "markets_supported": ["cn", "hk"],
                             "news_mode": "symbol_with_fallback",
-                            "enabled": True
+                            "enabled": True,
                         }
                     ],
                     ensure_ascii=False,
@@ -72,7 +78,10 @@ class VendorNewsLabTests(unittest.TestCase):
             vendors = load_vendor_configs(vendors_path)
 
             self.assertEqual(cases[0].aliases, ["通源"])
-            self.assertEqual(cases[0].candidate_keywords, [{"role": "ticker_symbol", "value": "688679.SH", "source": "manifest"}])
+            self.assertEqual(
+                cases[0].candidate_keywords,
+                [{"role": "ticker_symbol", "value": "688679.SH", "source": "manifest"}],
+            )
             self.assertEqual(vendors[0].vendor_key, "akshare")
             self.assertTrue(vendors[0].supports_market("cn"))
 
@@ -150,8 +159,11 @@ class VendorNewsLabTests(unittest.TestCase):
             mock.patch("vendor_news_lab.runner.get_akshare_module") as ak_mock,
             mock.patch(
                 "vendor_news_lab.runner.fetch_stock_news_em",
-                side_effect=lambda symbol: symbol_calls.append(symbol) or pd.DataFrame(
-                    [{"标题": "腾讯控股回购股份", "发布时间": "2026-04-03 10:00:00"}]
+                side_effect=lambda symbol: (
+                    symbol_calls.append(symbol)
+                    or pd.DataFrame(
+                        [{"标题": "腾讯控股回购股份", "发布时间": "2026-04-03 10:00:00"}]
+                    )
                 ),
             ),
         ):
@@ -176,7 +188,9 @@ class VendorNewsLabTests(unittest.TestCase):
             ]
         )
 
-        filtered = dataframe[dataframe["summary"].str.contains(pattern, case=False, na=False, regex=use_regex)]
+        filtered = dataframe[
+            dataframe["summary"].str.contains(pattern, case=False, na=False, regex=use_regex)
+        ]
 
         self.assertEqual(len(filtered), 1)
         self.assertEqual(filtered.iloc[0]["summary"], "腾讯控股(700)继续回购")
@@ -213,7 +227,9 @@ class VendorNewsLabTests(unittest.TestCase):
                 if vendor.vendor_key == "finnhub":
                     return format_dataframe_report(
                         "Finnhub news",
-                        pd.DataFrame([{"headline": "Apple launches new device", "date": "2026-04-03"}]),
+                        pd.DataFrame(
+                            [{"headline": "Apple launches new device", "date": "2026-04-03"}]
+                        ),
                     )
                 raise UnsupportedValidationError("unsupported vendor in fake test")
 
@@ -223,9 +239,13 @@ class VendorNewsLabTests(unittest.TestCase):
                 if variant.role.startswith("ticker"):
                     return format_dataframe_report(
                         "Finnhub keyword news",
-                        pd.DataFrame([{"headline": f"match:{variant.value}", "date": "2026-04-03"}]),
+                        pd.DataFrame(
+                            [{"headline": f"match:{variant.value}", "date": "2026-04-03"}]
+                        ),
                     )
-                raise UnsupportedValidationError("Finnhub keyword expansion only supports symbol-equivalent inputs")
+                raise UnsupportedValidationError(
+                    "Finnhub keyword expansion only supports symbol-equivalent inputs"
+                )
 
             runner = NewsValidationRunner(
                 output_root,
@@ -239,7 +259,13 @@ class VendorNewsLabTests(unittest.TestCase):
             self.assertTrue((run_dir / "summary.md").exists())
             self.assertTrue(any(item.outcome == "ok" for item in results))
             self.assertTrue(any(item.outcome == "unsupported" for item in results))
-            self.assertTrue(any(item.keyword_value == "AAPL" for item in results if item.mode == "keyword-expansion"))
+            self.assertTrue(
+                any(
+                    item.keyword_value == "AAPL"
+                    for item in results
+                    if item.mode == "keyword-expansion"
+                )
+            )
 
             records = [
                 json.loads(line)

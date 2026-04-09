@@ -4,11 +4,11 @@ from unittest.mock import MagicMock, patch
 
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
-from tradingagents.llm_clients.base_client import BaseLLMClient
 from tradingagents.llm_clients.anthropic_client import AnthropicClient
+from tradingagents.llm_clients.base_client import BaseLLMClient
 from tradingagents.llm_clients.factory import create_llm_client
-from tradingagents.llm_clients.openai_client import OpenAIClient
 from tradingagents.llm_clients.model_catalog import get_known_models
+from tradingagents.llm_clients.openai_client import OpenAIClient
 from tradingagents.llm_clients.validators import validate_model
 
 
@@ -89,7 +89,9 @@ class ModelValidationTests(unittest.TestCase):
 
     def test_minimax_filters_anthropic_only_kwargs(self):
         with patch.dict("os.environ", {"MINIMAX_API_KEY": "test-minimax-key"}, clear=False):
-            with patch("tradingagents.llm_clients.anthropic_client.NormalizedChatAnthropic") as chat_cls:
+            with patch(
+                "tradingagents.llm_clients.anthropic_client.NormalizedChatAnthropic"
+            ) as chat_cls:
                 client = AnthropicClient(
                     "MiniMax-M2.7",
                     base_url="https://api.minimaxi.com/anthropic",
@@ -115,12 +117,16 @@ class ModelValidationTests(unittest.TestCase):
         config["llm_timeout"] = 321
         config["llm_max_retries"] = 7
 
-        with patch("tradingagents.graph.trading_graph.create_llm_client", return_value=client) as create_client:
+        with patch(
+            "tradingagents.graph.trading_graph.create_llm_client", return_value=client
+        ) as create_client:
             with patch("tradingagents.graph.trading_graph.FinancialSituationMemory"):
                 with patch("tradingagents.graph.trading_graph.GraphSetup") as graph_setup_cls:
                     with patch("tradingagents.graph.trading_graph.Reflector"):
                         with patch("tradingagents.graph.trading_graph.SignalProcessor"):
-                            with patch.object(TradingAgentsGraph, "_create_tool_nodes", return_value={}):
+                            with patch.object(
+                                TradingAgentsGraph, "_create_tool_nodes", return_value={}
+                            ):
                                 graph_setup_cls.return_value.setup_graph.return_value = object()
                                 TradingAgentsGraph(selected_analysts=["market"], config=config)
 

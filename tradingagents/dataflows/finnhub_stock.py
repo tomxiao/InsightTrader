@@ -10,7 +10,9 @@ from .indicator_utils import compute_indicator_report
 from .market_resolver import detect_market, normalize_symbol_for_vendor
 
 
-def _fetch_finnhub_ohlcv(symbol: str, start_date: str, end_date: str) -> tuple[pd.DataFrame, str, str]:
+def _fetch_finnhub_ohlcv(
+    symbol: str, start_date: str, end_date: str
+) -> tuple[pd.DataFrame, str, str]:
     market = detect_market(symbol)
     finnhub_symbol = normalize_symbol_for_vendor(symbol, "finnhub", market)
     client = get_finnhub_client()
@@ -52,7 +54,9 @@ def get_stock(symbol: str, start_date: str, end_date: str) -> str:
 
 def get_indicator(symbol: str, indicator: str, curr_date: str, look_back_days: int = 30) -> str:
     try:
-        start_date = (pd.Timestamp(curr_date) - pd.Timedelta(days=max(look_back_days * 3, 365))).strftime("%Y-%m-%d")
+        start_date = (
+            pd.Timestamp(curr_date) - pd.Timedelta(days=max(look_back_days * 3, 365))
+        ).strftime("%Y-%m-%d")
         dataframe, _market, _finnhub_symbol = _fetch_finnhub_ohlcv(symbol, start_date, curr_date)
         return compute_indicator_report(dataframe, indicator, curr_date, look_back_days)
     except Exception as exc:

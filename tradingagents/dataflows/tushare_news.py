@@ -12,13 +12,19 @@ def get_news(ticker: str, start_date: str, end_date: str) -> str:
         market = detect_market(ticker)
         symbol = normalize_symbol_for_vendor(ticker, "tushare", market)
         pro = get_tushare_pro()
-        dataframe = pro.news(start_date=start_date.replace("-", ""), end_date=end_date.replace("-", ""))
+        dataframe = pro.news(
+            start_date=start_date.replace("-", ""), end_date=end_date.replace("-", "")
+        )
         if dataframe is not None and not dataframe.empty:
             filters = []
             for column in ["title", "content", "name", "ts_code"]:
                 if column in dataframe.columns:
-                    filters.append(dataframe[column].astype(str).str.contains(ticker, case=False, na=False))
-                    filters.append(dataframe[column].astype(str).str.contains(symbol, case=False, na=False))
+                    filters.append(
+                        dataframe[column].astype(str).str.contains(ticker, case=False, na=False)
+                    )
+                    filters.append(
+                        dataframe[column].astype(str).str.contains(symbol, case=False, na=False)
+                    )
             if filters:
                 mask = filters[0]
                 for item in filters[1:]:
@@ -44,7 +50,12 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 50) ->
         return format_dataframe_report(
             "Tushare global news",
             dataframe,
-            {"Vendor": "tushare", "Date": curr_date, "Look back days": look_back_days, "Limit": limit},
+            {
+                "Vendor": "tushare",
+                "Date": curr_date,
+                "Look back days": look_back_days,
+                "Limit": limit,
+            },
         )
     except Exception as exc:
         return f"Error retrieving global news via tushare: {exc}"
@@ -52,4 +63,9 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 50) ->
 
 def get_insider_transactions(ticker: str) -> str:
     market = detect_market(ticker)
-    return unsupported_response("tushare", "get_insider_transactions", market, "This endpoint was not validated and may be permission-gated.")
+    return unsupported_response(
+        "tushare",
+        "get_insider_transactions",
+        market,
+        "This endpoint was not validated and may be permission-gated.",
+    )

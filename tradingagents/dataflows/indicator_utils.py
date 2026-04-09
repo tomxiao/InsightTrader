@@ -5,7 +5,6 @@ from datetime import datetime, timedelta
 import pandas as pd
 from stockstats import wrap
 
-
 INDICATOR_DESCRIPTIONS = {
     "close_50_sma": "50 SMA: A medium-term trend indicator used to identify trend direction and dynamic support or resistance.",
     "close_200_sma": "200 SMA: A long-term trend benchmark often used for strategic trend confirmation and golden/death cross setups.",

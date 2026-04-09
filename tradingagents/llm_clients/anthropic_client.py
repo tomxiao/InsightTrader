@@ -4,18 +4,30 @@ from typing import Any, Optional
 
 from langchain_anthropic import ChatAnthropic
 
-from .base_client import BaseLLMClient, normalize_content
-from .validators import validate_model
 from tradingagents.observability import emit_llm_event
 
+from .base_client import BaseLLMClient, normalize_content
+from .validators import validate_model
+
 _ANTHROPIC_PASSTHROUGH_KWARGS = (
-    "timeout", "max_retries", "api_key", "max_tokens",
-    "callbacks", "http_client", "http_async_client", "effort",
+    "timeout",
+    "max_retries",
+    "api_key",
+    "max_tokens",
+    "callbacks",
+    "http_client",
+    "http_async_client",
+    "effort",
 )
 
 _MINIMAX_PASSTHROUGH_KWARGS = (
-    "timeout", "max_retries", "api_key", "max_tokens",
-    "callbacks", "http_client", "http_async_client",
+    "timeout",
+    "max_retries",
+    "api_key",
+    "max_tokens",
+    "callbacks",
+    "http_client",
+    "http_async_client",
 )
 
 _PROVIDER_PASSTHROUGH_KWARGS = {

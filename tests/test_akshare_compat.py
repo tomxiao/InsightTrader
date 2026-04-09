@@ -13,7 +13,9 @@ class AkshareCompatTests(unittest.TestCase):
         fake_ak = mock.Mock()
         fake_ak.stock_news_em.return_value = pd.DataFrame([{"新闻标题": "官方返回"}])
 
-        with mock.patch("tradingagents.dataflows.akshare_common.get_akshare_module", return_value=fake_ak):
+        with mock.patch(
+            "tradingagents.dataflows.akshare_common.get_akshare_module", return_value=fake_ak
+        ):
             result = fetch_stock_news_em("603777")
 
         self.assertEqual(len(result), 1)
@@ -27,7 +29,9 @@ class AkshareCompatTests(unittest.TestCase):
         compat_df = pd.DataFrame([{"新闻标题": "兼容路径返回"}])
 
         with (
-            mock.patch("tradingagents.dataflows.akshare_common.get_akshare_module", return_value=fake_ak),
+            mock.patch(
+                "tradingagents.dataflows.akshare_common.get_akshare_module", return_value=fake_ak
+            ),
             mock.patch(
                 "tradingagents.dataflows.akshare_common._fetch_stock_news_em_compat",
                 return_value=compat_df,

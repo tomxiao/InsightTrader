@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import sys
 from pathlib import Path
 
@@ -8,7 +9,10 @@ SCRIPT_ROOT = Path(__file__).resolve().parent
 if str(SCRIPT_ROOT) not in sys.path:
     sys.path.insert(0, str(SCRIPT_ROOT))
 
-from llm_response_lab import ValidationRunner, load_cases, load_provider_configs
+llm_response_lab = importlib.import_module("llm_response_lab")
+ValidationRunner = llm_response_lab.ValidationRunner
+load_cases = llm_response_lab.load_cases
+load_provider_configs = llm_response_lab.load_provider_configs
 
 
 def parse_args() -> argparse.Namespace:

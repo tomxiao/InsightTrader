@@ -5,7 +5,12 @@ import pandas as pd
 from .akshare_common import get_akshare_module, run_without_proxy
 from .formatting import format_dataframe_report
 from .indicator_utils import compute_indicator_report
-from .market_resolver import MARKET_A_SHARE, MARKET_HK, MARKET_US, detect_market, normalize_symbol_for_vendor
+from .market_resolver import (
+    MARKET_A_SHARE,
+    MARKET_HK,
+    detect_market,
+    normalize_symbol_for_vendor,
+)
 
 
 def _rename_by_position(dataframe: pd.DataFrame, market: str) -> pd.DataFrame:
@@ -35,20 +40,46 @@ def _rename_by_position(dataframe: pd.DataFrame, market: str) -> pd.DataFrame:
 
     renamed = dataframe.rename(columns=mapping).copy()
     renamed["Date"] = pd.to_datetime(renamed["Date"], errors="coerce").dt.strftime("%Y-%m-%d")
-    return renamed[[column for column in ["Date", "Open", "High", "Low", "Close", "Volume", "Amount"] if column in renamed.columns]]
+    return renamed[
+        [
+            column
+            for column in ["Date", "Open", "High", "Low", "Close", "Volume", "Amount"]
+            if column in renamed.columns
+        ]
+    ]
 
 
-def _fetch_akshare_ohlcv(symbol: str, start_date: str, end_date: str) -> tuple[pd.DataFrame, str, str]:
+def _fetch_akshare_ohlcv(
+    symbol: str, start_date: str, end_date: str
+) -> tuple[pd.DataFrame, str, str]:
     market = detect_market(symbol)
     vendor_symbol = normalize_symbol_for_vendor(symbol, "akshare", market)
     ak = get_akshare_module()
 
     def _run():
         if market == MARKET_A_SHARE:
-            return ak.stock_zh_a_hist(symbol=vendor_symbol, period="daily", start_date=start_date.replace("-", ""), end_date=end_date.replace("-", ""), adjust="")
+            return ak.stock_zh_a_hist(
+                symbol=vendor_symbol,
+                period="daily",
+                start_date=start_date.replace("-", ""),
+                end_date=end_date.replace("-", ""),
+                adjust="",
+            )
         if market == MARKET_HK:
-            return ak.stock_hk_hist(symbol=vendor_symbol, period="daily", start_date=start_date.replace("-", ""), end_date=end_date.replace("-", ""), adjust="")
-        return ak.stock_us_hist(symbol=vendor_symbol, period="daily", start_date=start_date.replace("-", ""), end_date=end_date.replace("-", ""), adjust="")
+            return ak.stock_hk_hist(
+                symbol=vendor_symbol,
+                period="daily",
+                start_date=start_date.replace("-", ""),
+                end_date=end_date.replace("-", ""),
+                adjust="",
+            )
+        return ak.stock_us_hist(
+            symbol=vendor_symbol,
+            period="daily",
+            start_date=start_date.replace("-", ""),
+            end_date=end_date.replace("-", ""),
+            adjust="",
+        )
 
     dataframe = run_without_proxy(_run)
     if dataframe is None or dataframe.empty:
@@ -76,7 +107,9 @@ def get_stock(symbol: str, start_date: str, end_date: str) -> str:
 
 def get_indicator(symbol: str, indicator: str, curr_date: str, look_back_days: int = 30) -> str:
     try:
-        start_date = (pd.Timestamp(curr_date) - pd.Timedelta(days=max(look_back_days * 3, 365))).strftime("%Y-%m-%d")
+        start_date = (
+            pd.Timestamp(curr_date) - pd.Timedelta(days=max(look_back_days * 3, 365))
+        ).strftime("%Y-%m-%d")
         dataframe, _market, _vendor_symbol = _fetch_akshare_ohlcv(symbol, start_date, curr_date)
         return compute_indicator_report(dataframe, indicator, curr_date, look_back_days)
     except Exception as exc:

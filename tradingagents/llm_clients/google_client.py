@@ -3,9 +3,10 @@ from typing import Any, Optional
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+from tradingagents.observability import emit_llm_event
+
 from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
-from tradingagents.observability import emit_llm_event
 
 
 class NormalizedChatGoogleGenerativeAI(ChatGoogleGenerativeAI):

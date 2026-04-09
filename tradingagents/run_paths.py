@@ -1,7 +1,6 @@
 from datetime import datetime
 from pathlib import Path
 
-
 RUN_DIR_TIMESTAMP_FORMAT = "%Y_%m%d_%H%M"
 
 

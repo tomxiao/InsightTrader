@@ -148,6 +148,8 @@ activemq-data/
 *.sage.py
 
 # Environments
+.env.*
+!.env.example
 .envrc
 .venv
 env/
@@ -202,6 +204,7 @@ cython_debug/
 
 # Ruff stuff:
 .ruff_cache/
+.pre-commit-cache/
 
 # PyPI configuration file
 .pypirc
@@ -219,3 +222,6 @@ __marimo__/
 
 # output
 results/
+validation/vendor-news-lab/outputs/
+validation/llm-response-lab/outputs/
+**/node_modules/

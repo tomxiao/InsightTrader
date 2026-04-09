@@ -66,7 +66,11 @@ def detect_market(ticker: str) -> str:
         return MARKET_A_SHARE
     if re.fullmatch(r"(?:SH|SZ)\.?\d{6}", value) or re.fullmatch(r"\d{6}\.(?:SH|SZ)", value):
         return MARKET_A_SHARE
-    if re.fullmatch(r"\d{4,5}", value) or re.fullmatch(r"HK\.\d{4,5}", value) or re.fullmatch(r"\d{4,5}\.HK", value):
+    if (
+        re.fullmatch(r"\d{4,5}", value)
+        or re.fullmatch(r"HK\.\d{4,5}", value)
+        or re.fullmatch(r"\d{4,5}\.HK", value)
+    ):
         return MARKET_HK
     return MARKET_US
 

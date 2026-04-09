@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from .market_resolver import MARKET_A_SHARE, MARKET_HK, MARKET_US
 
-
 DEFAULT_MARKET_TOOL_VENDORS = {
     MARKET_A_SHARE: {
         "get_stock_data": "tushare",
@@ -11,7 +10,7 @@ DEFAULT_MARKET_TOOL_VENDORS = {
         "get_balance_sheet": "tushare",
         "get_cashflow": "tushare",
         "get_income_statement": "tushare",
-        "get_news": "tushare",
+        "get_news": "akshare",
         "get_global_news": "tushare",
         "get_insider_transactions": None,
     },
@@ -22,7 +21,7 @@ DEFAULT_MARKET_TOOL_VENDORS = {
         "get_balance_sheet": "akshare",
         "get_cashflow": "akshare",
         "get_income_statement": "akshare",
-        "get_news": "tushare",
+        "get_news": "akshare",
         "get_global_news": "tushare",
         "get_insider_transactions": None,
     },

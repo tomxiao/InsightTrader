@@ -106,9 +106,13 @@ def _fetch_stock_news_em_compat(symbol: str) -> pd.DataFrame:
     items = data_json.get("result", {}).get("cmsArticleWebOld", [])
     temp_df = pd.DataFrame(items)
     if temp_df.empty:
-        return pd.DataFrame(columns=["关键词", "新闻标题", "新闻内容", "发布时间", "文章来源", "新闻链接"])
+        return pd.DataFrame(
+            columns=["关键词", "新闻标题", "新闻内容", "发布时间", "文章来源", "新闻链接"]
+        )
 
-    temp_df["url"] = "http://finance.eastmoney.com/a/" + temp_df["code"].astype("string[python]") + ".html"
+    temp_df["url"] = (
+        "http://finance.eastmoney.com/a/" + temp_df["code"].astype("string[python]") + ".html"
+    )
     temp_df.rename(
         columns={
             "date": "发布时间",

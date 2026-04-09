@@ -7,6 +7,7 @@ from pathlib import Path
 import pandas as pd
 
 from tradingagents.dataflows.config import clear_runtime_context, set_runtime_context
+from tradingagents.dataflows.indicator_utils import compute_indicator_report
 from tradingagents.observability import (
     NODE_TRACE_FILENAME,
     RUN_TRACE_FILENAME,
@@ -15,7 +16,6 @@ from tradingagents.observability import (
     emit_trace_event,
     persist_research_debate_llm_input,
 )
-from tradingagents.dataflows.indicator_utils import compute_indicator_report
 
 
 class ObservabilityTests(unittest.TestCase):
@@ -59,9 +59,13 @@ class ObservabilityTests(unittest.TestCase):
 
             stage_events = [
                 json.loads(line)
-                for line in (Path(temp_dir) / "stage_events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(temp_dir) / "stage_events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
             ]
-            self.assertEqual([event["event"] for event in stage_events], ["stage.started", "stage.completed"])
+            self.assertEqual(
+                [event["event"] for event in stage_events], ["stage.started", "stage.completed"]
+            )
             self.assertEqual(stage_events[-1]["stage_id"], "portfolio.decision")
 
     def test_stage_event_tracker_emits_stalled_event(self):
@@ -80,7 +84,9 @@ class ObservabilityTests(unittest.TestCase):
 
             stage_events = [
                 json.loads(line)
-                for line in (Path(temp_dir) / "stage_events.jsonl").read_text(encoding="utf-8").splitlines()
+                for line in (Path(temp_dir) / "stage_events.jsonl")
+                .read_text(encoding="utf-8")
+                .splitlines()
             ]
             event_names = [event["event"] for event in stage_events]
             self.assertIn("stage.started", event_names)
@@ -102,9 +108,13 @@ class ObservabilityTests(unittest.TestCase):
 
             node_events = [
                 json.loads(line)
-                for line in (Path(temp_dir) / NODE_TRACE_FILENAME).read_text(encoding="utf-8").splitlines()
+                for line in (Path(temp_dir) / NODE_TRACE_FILENAME)
+                .read_text(encoding="utf-8")
+                .splitlines()
             ]
-            self.assertEqual([event["event"] for event in node_events], ["node.started", "node.completed"])
+            self.assertEqual(
+                [event["event"] for event in node_events], ["node.started", "node.completed"]
+            )
             self.assertEqual(node_events[-1]["node_id"], "Research Manager")
             self.assertEqual(node_events[-1]["stage_id"], "research.debate")
             self.assertGreaterEqual(node_events[-1]["duration_ms"], 0)
@@ -129,7 +139,9 @@ class ObservabilityTests(unittest.TestCase):
 
             node_events = [
                 json.loads(line)
-                for line in (Path(temp_dir) / NODE_TRACE_FILENAME).read_text(encoding="utf-8").splitlines()
+                for line in (Path(temp_dir) / NODE_TRACE_FILENAME)
+                .read_text(encoding="utf-8")
+                .splitlines()
             ]
             event_names = [event["event"] for event in node_events]
             self.assertIn("node.started", event_names)

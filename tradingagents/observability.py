@@ -8,7 +8,6 @@ from typing import Any, Dict, Optional
 
 from tradingagents.dataflows.config import get_runtime_context
 
-
 SCHEMA_VERSION = 1
 RUN_TRACE_FILENAME = "run_trace.jsonl"
 NODE_TRACE_FILENAME = "node_events.jsonl"
@@ -199,17 +198,16 @@ def persist_research_debate_llm_input(
     model: Optional[str] = None,
 ) -> Optional[str]:
     merged_runtime_context = _merge_runtime_context(runtime_context)
-    stage_id = merged_runtime_context.get("current_stage_id") or merged_runtime_context.get("stage_id")
+    stage_id = merged_runtime_context.get("current_stage_id") or merged_runtime_context.get(
+        "stage_id"
+    )
     if stage_id != "research.debate":
         return None
 
     trace_dir = _resolve_trace_dir(config=config, runtime_context=merged_runtime_context)
     sequence = _next_trace_sequence(trace_dir, "research_debate_llm_input")
     node_id = merged_runtime_context.get("current_node_id") or "unknown-node"
-    filename = (
-        f"{sequence:03d}_"
-        f"{_sanitize_path_component(node_id)}.json"
-    )
+    filename = f"{sequence:03d}_{_sanitize_path_component(node_id)}.json"
     output_path = trace_dir / _RESEARCH_DEBATE_INPUT_DIR / filename
     serialized_input = _serialize_llm_input(llm_input)
     payload = {
@@ -386,7 +384,11 @@ class StageEventTracker:
 
             self.stage_status = dict(stage_snapshot)
             self.current_stage_id = next(
-                (stage_id for stage_id, status in stage_snapshot.items() if status == "in_progress"),
+                (
+                    stage_id
+                    for stage_id, status in stage_snapshot.items()
+                    if status == "in_progress"
+                ),
                 None,
             )
 

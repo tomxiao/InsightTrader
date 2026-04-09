@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import sys
 from pathlib import Path
 
@@ -12,11 +13,16 @@ for path in (REPO_ROOT, SCRIPT_ROOT):
         sys.path.remove(text)
     sys.path.insert(0, text)
 
-from vendor_news_lab import NewsValidationRunner, load_news_cases, load_vendor_configs
+vendor_news_lab = importlib.import_module("vendor_news_lab")
+NewsValidationRunner = vendor_news_lab.NewsValidationRunner
+load_news_cases = vendor_news_lab.load_news_cases
+load_vendor_configs = vendor_news_lab.load_vendor_configs
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate stock news vendors and keyword expansion.")
+    parser = argparse.ArgumentParser(
+        description="Validate stock news vendors and keyword expansion."
+    )
     parser.add_argument(
         "--cases",
         default="validation/vendor-news-lab/cases/market_news_cases.json",

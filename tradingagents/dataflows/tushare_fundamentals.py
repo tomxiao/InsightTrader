@@ -3,7 +3,12 @@ from __future__ import annotations
 import pandas as pd
 
 from .formatting import format_dataframe_report, format_text_report, unsupported_response
-from .market_resolver import MARKET_A_SHARE, MARKET_HK, MARKET_US, detect_market, normalize_symbol_for_vendor
+from .market_resolver import (
+    MARKET_A_SHARE,
+    MARKET_HK,
+    detect_market,
+    normalize_symbol_for_vendor,
+)
 from .tushare_common import get_tushare_pro
 
 
@@ -31,10 +36,19 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
         return f"Error retrieving fundamentals for {ticker} via tushare: {exc}"
 
 
-def _fetch_statement(ticker: str, method_name: str, curr_date: str | None = None) -> tuple[pd.DataFrame, str, str]:
+def _fetch_statement(
+    ticker: str, method_name: str, curr_date: str | None = None
+) -> tuple[pd.DataFrame, str, str]:
     market = detect_market(ticker)
     if market != MARKET_A_SHARE:
-        raise ValueError(unsupported_response("tushare", method_name, market, "Only A-share financial statements are wired in this implementation."))
+        raise ValueError(
+            unsupported_response(
+                "tushare",
+                method_name,
+                market,
+                "Only A-share financial statements are wired in this implementation.",
+            )
+        )
     symbol = normalize_symbol_for_vendor(ticker, "tushare", market)
     pro = get_tushare_pro()
     dataframe = getattr(pro, method_name)(ts_code=symbol)

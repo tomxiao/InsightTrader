@@ -45,7 +45,9 @@ def format_json_report(title: str, payload: Any, metadata: dict[str, Any] | None
     return header + json.dumps(payload, ensure_ascii=False, indent=2, default=str)
 
 
-def unsupported_response(vendor: str, method: str, market: str | None = None, reason: str | None = None) -> str:
+def unsupported_response(
+    vendor: str, method: str, market: str | None = None, reason: str | None = None
+) -> str:
     details: list[str] = [f"Vendor `{vendor}` does not currently support `{method}`"]
     if market:
         details.append(f"for market `{market}`")
@@ -73,10 +75,18 @@ def standardize_ohlcv_dataframe(
     renamed[date_column] = pd.to_datetime(renamed[date_column], errors="coerce")
     renamed = renamed.dropna(subset=[date_column]).sort_values(date_column)
 
-    numeric_columns = [column for column in ["Open", "High", "Low", "Close", "Volume", "Adj Close", "Amount"] if column in renamed.columns]
+    numeric_columns = [
+        column
+        for column in ["Open", "High", "Low", "Close", "Volume", "Adj Close", "Amount"]
+        if column in renamed.columns
+    ]
     for column in numeric_columns:
         renamed[column] = pd.to_numeric(renamed[column], errors="coerce")
 
     renamed["Date"] = renamed[date_column].dt.strftime("%Y-%m-%d")
-    base_columns = [column for column in ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume", "Amount"] if column in renamed.columns]
+    base_columns = [
+        column
+        for column in ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume", "Amount"]
+        if column in renamed.columns
+    ]
     return renamed[base_columns].reset_index(drop=True)

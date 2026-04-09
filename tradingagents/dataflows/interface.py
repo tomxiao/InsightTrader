@@ -1,102 +1,161 @@
-from .y_finance import (
-    get_YFin_data_online,
-    get_stock_stats_indicators_window,
-    get_fundamentals as get_yfinance_fundamentals,
-    get_balance_sheet as get_yfinance_balance_sheet,
-    get_cashflow as get_yfinance_cashflow,
-    get_income_statement as get_yfinance_income_statement,
-    get_insider_transactions as get_yfinance_insider_transactions,
+from tradingagents.observability import emit_trace_event
+
+from .akshare_fundamentals import (
+    get_balance_sheet as get_akshare_balance_sheet,
 )
-from .yfinance_news import get_news_yfinance, get_global_news_yfinance
+from .akshare_fundamentals import (
+    get_cashflow as get_akshare_cashflow,
+)
+from .akshare_fundamentals import (
+    get_fundamentals as get_akshare_fundamentals,
+)
+from .akshare_fundamentals import (
+    get_income_statement as get_akshare_income_statement,
+)
+from .akshare_news import (
+    get_global_news as get_akshare_global_news,
+)
+from .akshare_news import (
+    get_insider_transactions as get_akshare_insider_transactions,
+)
+from .akshare_news import (
+    get_news as get_akshare_news,
+)
+from .akshare_stock import get_indicator as get_akshare_indicator
+from .akshare_stock import get_stock as get_akshare_stock
+from .alpha_vantage import (
+    get_balance_sheet as get_alpha_vantage_balance_sheet,
+)
+from .alpha_vantage import (
+    get_cashflow as get_alpha_vantage_cashflow,
+)
+from .alpha_vantage import (
+    get_fundamentals as get_alpha_vantage_fundamentals,
+)
+from .alpha_vantage import (
+    get_global_news as get_alpha_vantage_global_news,
+)
+from .alpha_vantage import (
+    get_income_statement as get_alpha_vantage_income_statement,
+)
+from .alpha_vantage import (
+    get_indicator as get_alpha_vantage_indicator,
+)
+from .alpha_vantage import (
+    get_insider_transactions as get_alpha_vantage_insider_transactions,
+)
+from .alpha_vantage import (
+    get_news as get_alpha_vantage_news,
+)
 from .alpha_vantage import (
     get_stock as get_alpha_vantage_stock,
-    get_indicator as get_alpha_vantage_indicator,
-    get_fundamentals as get_alpha_vantage_fundamentals,
-    get_balance_sheet as get_alpha_vantage_balance_sheet,
-    get_cashflow as get_alpha_vantage_cashflow,
-    get_income_statement as get_alpha_vantage_income_statement,
-    get_insider_transactions as get_alpha_vantage_insider_transactions,
-    get_news as get_alpha_vantage_news,
-    get_global_news as get_alpha_vantage_global_news,
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
 
 # Configuration and routing logic
 from .config import get_config, get_runtime_context
-from .formatting import unsupported_response
-from .market_resolver import detect_market, normalize_symbol_for_vendor
-from tradingagents.observability import emit_trace_event
-from .tushare_stock import get_stock as get_tushare_stock, get_indicator as get_tushare_indicator
-from .tushare_fundamentals import (
-    get_fundamentals as get_tushare_fundamentals,
-    get_balance_sheet as get_tushare_balance_sheet,
-    get_cashflow as get_tushare_cashflow,
-    get_income_statement as get_tushare_income_statement,
+from .finnhub_fundamentals import (
+    get_balance_sheet as get_finnhub_balance_sheet,
 )
-from .tushare_news import (
-    get_news as get_tushare_news,
-    get_global_news as get_tushare_global_news,
-    get_insider_transactions as get_tushare_insider_transactions,
+from .finnhub_fundamentals import (
+    get_cashflow as get_finnhub_cashflow,
 )
-from .futu_stock import get_stock as get_futu_stock, get_indicator as get_futu_indicator
-from .futu_fundamentals import (
-    get_fundamentals as get_futu_fundamentals,
-    get_balance_sheet as get_futu_balance_sheet,
-    get_cashflow as get_futu_cashflow,
-    get_income_statement as get_futu_income_statement,
-)
-from .futu_news import (
-    get_news as get_futu_news,
-    get_global_news as get_futu_global_news,
-    get_insider_transactions as get_futu_insider_transactions,
-)
-from .finnhub_stock import get_stock as get_finnhub_stock, get_indicator as get_finnhub_indicator
 from .finnhub_fundamentals import (
     get_fundamentals as get_finnhub_fundamentals,
-    get_balance_sheet as get_finnhub_balance_sheet,
-    get_cashflow as get_finnhub_cashflow,
+)
+from .finnhub_fundamentals import (
     get_income_statement as get_finnhub_income_statement,
 )
 from .finnhub_news import (
-    get_news as get_finnhub_news,
     get_global_news as get_finnhub_global_news,
+)
+from .finnhub_news import (
     get_insider_transactions as get_finnhub_insider_transactions,
 )
-from .akshare_stock import get_stock as get_akshare_stock, get_indicator as get_akshare_indicator
-from .akshare_fundamentals import (
-    get_fundamentals as get_akshare_fundamentals,
-    get_balance_sheet as get_akshare_balance_sheet,
-    get_cashflow as get_akshare_cashflow,
-    get_income_statement as get_akshare_income_statement,
+from .finnhub_news import (
+    get_news as get_finnhub_news,
 )
-from .akshare_news import (
-    get_news as get_akshare_news,
-    get_global_news as get_akshare_global_news,
-    get_insider_transactions as get_akshare_insider_transactions,
+from .finnhub_stock import get_indicator as get_finnhub_indicator
+from .finnhub_stock import get_stock as get_finnhub_stock
+from .formatting import unsupported_response
+from .futu_fundamentals import (
+    get_balance_sheet as get_futu_balance_sheet,
 )
+from .futu_fundamentals import (
+    get_cashflow as get_futu_cashflow,
+)
+from .futu_fundamentals import (
+    get_fundamentals as get_futu_fundamentals,
+)
+from .futu_fundamentals import (
+    get_income_statement as get_futu_income_statement,
+)
+from .futu_news import (
+    get_global_news as get_futu_global_news,
+)
+from .futu_news import (
+    get_insider_transactions as get_futu_insider_transactions,
+)
+from .futu_news import (
+    get_news as get_futu_news,
+)
+from .futu_stock import get_indicator as get_futu_indicator
+from .futu_stock import get_stock as get_futu_stock
+from .market_resolver import detect_market, normalize_symbol_for_vendor
+from .tushare_fundamentals import (
+    get_balance_sheet as get_tushare_balance_sheet,
+)
+from .tushare_fundamentals import (
+    get_cashflow as get_tushare_cashflow,
+)
+from .tushare_fundamentals import (
+    get_fundamentals as get_tushare_fundamentals,
+)
+from .tushare_fundamentals import (
+    get_income_statement as get_tushare_income_statement,
+)
+from .tushare_news import (
+    get_global_news as get_tushare_global_news,
+)
+from .tushare_news import (
+    get_insider_transactions as get_tushare_insider_transactions,
+)
+from .tushare_news import (
+    get_news as get_tushare_news,
+)
+from .tushare_stock import get_indicator as get_tushare_indicator
+from .tushare_stock import get_stock as get_tushare_stock
+from .y_finance import (
+    get_balance_sheet as get_yfinance_balance_sheet,
+)
+from .y_finance import (
+    get_cashflow as get_yfinance_cashflow,
+)
+from .y_finance import (
+    get_fundamentals as get_yfinance_fundamentals,
+)
+from .y_finance import (
+    get_income_statement as get_yfinance_income_statement,
+)
+from .y_finance import (
+    get_insider_transactions as get_yfinance_insider_transactions,
+)
+from .y_finance import (
+    get_stock_stats_indicators_window,
+    get_YFin_data_online,
+)
+from .yfinance_news import get_global_news_yfinance, get_news_yfinance
 
 # Tools organized by category
 TOOLS_CATEGORIES = {
-    "core_stock_apis": {
-        "description": "OHLCV stock price data",
-        "tools": [
-            "get_stock_data"
-        ]
-    },
+    "core_stock_apis": {"description": "OHLCV stock price data", "tools": ["get_stock_data"]},
     "technical_indicators": {
         "description": "Technical analysis indicators",
-        "tools": [
-            "get_indicators"
-        ]
+        "tools": ["get_indicators"],
     },
     "fundamental_data": {
         "description": "Company fundamentals",
-        "tools": [
-            "get_fundamentals",
-            "get_balance_sheet",
-            "get_cashflow",
-            "get_income_statement"
-        ]
+        "tools": ["get_fundamentals", "get_balance_sheet", "get_cashflow", "get_income_statement"],
     },
     "news_data": {
         "description": "News and insider data",
@@ -104,8 +163,8 @@ TOOLS_CATEGORIES = {
             "get_news",
             "get_global_news",
             "get_insider_transactions",
-        ]
-    }
+        ],
+    },
 }
 
 VENDOR_LIST = [
@@ -197,12 +256,14 @@ VENDOR_METHODS = {
     },
 }
 
+
 def get_category_for_method(method: str) -> str:
     """Get the category that contains the specified method."""
     for category, info in TOOLS_CATEGORIES.items():
         if method in info["tools"]:
             return category
     raise ValueError(f"Method '{method}' not found in any category")
+
 
 def get_vendor(category: str, method: str = None) -> str:
     """Get the configured vendor for a data category or specific tool method.
@@ -306,6 +367,7 @@ def _returned_error_payload(result):
         "error_message": stripped,
     }
 
+
 def route_to_vendor(method: str, *args, **kwargs):
     """Route method calls to the appropriate vendor implementation."""
     if method not in VENDOR_METHODS:
@@ -322,7 +384,9 @@ def route_to_vendor(method: str, *args, **kwargs):
             outcome="blocked",
             reason="no_best_vendor",
         )
-        return unsupported_response("routing", method, market, "No best vendor is configured for this market and tool.")
+        return unsupported_response(
+            "routing", method, market, "No best vendor is configured for this market and tool."
+        )
 
     if market_vendor:
         vendor_chain = [market_vendor]

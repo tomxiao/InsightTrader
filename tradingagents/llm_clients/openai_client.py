@@ -4,9 +4,10 @@ from typing import Any, Optional
 
 from langchain_openai import ChatOpenAI
 
+from tradingagents.observability import emit_llm_event
+
 from .base_client import BaseLLMClient, normalize_content
 from .validators import validate_model
-from tradingagents.observability import emit_llm_event
 
 
 class NormalizedChatOpenAI(ChatOpenAI):
@@ -48,10 +49,16 @@ class NormalizedChatOpenAI(ChatOpenAI):
         )
         return normalize_content(response)
 
+
 # Kwargs forwarded from user config to ChatOpenAI
 _PASSTHROUGH_KWARGS = (
-    "timeout", "max_retries", "reasoning_effort",
-    "api_key", "callbacks", "http_client", "http_async_client",
+    "timeout",
+    "max_retries",
+    "reasoning_effort",
+    "api_key",
+    "callbacks",
+    "http_client",
+    "http_async_client",
 )
 
 # Provider base URLs and API key env vars

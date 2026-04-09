@@ -38,6 +38,13 @@ dependencies = [
     "yfinance>=0.2.63",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "build",
+    "pre-commit",
+    "ruff",
+]
+
 [project.scripts]
 tradingagents = "cli.main:app"
 
@@ -46,6 +53,19 @@ include = ["tradingagents*", "cli*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+extend-exclude = [
+    "results",
+    "mobile_h5/node_modules",
+    "validation/vendor-news-lab/outputs",
+    "validation/llm-response-lab/outputs",
+]
+
+[tool.ruff.lint]
+select = ["E9", "F63", "F7", "F82"]
 
 [[tool.uv.index]]
 name = "tsinghua"

@@ -10,7 +10,11 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
-from tradingagents.dataflows.akshare_common import fetch_stock_news_em, get_akshare_module, run_without_proxy
+from tradingagents.dataflows.akshare_common import (
+    fetch_stock_news_em,
+    get_akshare_module,
+    run_without_proxy,
+)
 from tradingagents.dataflows.finnhub_common import get_finnhub_client
 from tradingagents.dataflows.formatting import format_dataframe_report
 from tradingagents.dataflows.market_resolver import (
@@ -71,7 +75,9 @@ def default_vendor_news_fetcher(vendor: VendorConfig, case: MarketNewsCase) -> s
 
     method = VENDOR_METHODS["get_news"].get(vendor.vendor_key)
     if method is None:
-        raise UnsupportedValidationError(f"No get_news implementation registered for vendor `{vendor.vendor_key}`.")
+        raise UnsupportedValidationError(
+            f"No get_news implementation registered for vendor `{vendor.vendor_key}`."
+        )
     return method(case.ticker, case.start_date, case.end_date)
 
 
@@ -164,10 +170,12 @@ class NewsValidationRunner:
                             case=case,
                             vendor=vendor,
                             keyword_variant=variant,
-                            fetch=lambda vendor=vendor, case=case, variant=variant: self.keyword_expansion_fetcher(
-                                vendor,
-                                case,
-                                variant,
+                            fetch=lambda vendor=vendor, case=case, variant=variant: (
+                                self.keyword_expansion_fetcher(
+                                    vendor,
+                                    case,
+                                    variant,
+                                )
                             ),
                         )
                     )
@@ -375,7 +383,7 @@ class NewsValidationRunner:
             else:
                 lines.append("No snapshot content captured.")
             target.write_text("\n".join(lines) + "\n", encoding="utf-8")
-            result.snapshot_path = str(target.relative_to(run_dir := snapshot_root.parent))
+            result.snapshot_path = str(target.relative_to(snapshot_root.parent))
 
     def _write_results_jsonl(self, path: Path, results: list[ValidationResult]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -623,6 +631,7 @@ def _normalize_finnhub_symbol(case: MarketNewsCase, keyword: str) -> str:
         )
     return candidate
 
+
 def _coerce_dataframe(payload: Any) -> pd.DataFrame:
     if isinstance(payload, pd.DataFrame):
         return payload
@@ -661,7 +670,9 @@ def _build_keyword_matcher(keyword: str) -> tuple[str, bool]:
     return text, False
 
 
-def _filter_dataframe_by_date(dataframe: pd.DataFrame, start_date: str, end_date: str) -> pd.DataFrame:
+def _filter_dataframe_by_date(
+    dataframe: pd.DataFrame, start_date: str, end_date: str
+) -> pd.DataFrame:
     dataframe = _coerce_dataframe(dataframe)
     if dataframe.empty:
         return dataframe
@@ -695,7 +706,9 @@ def _extract_csv_body(response_text: str) -> str:
     return parts[1].strip()
 
 
-def _aggregate_rows(results: list[ValidationResult], *, keys: tuple[str, ...]) -> list[dict[str, Any]]:
+def _aggregate_rows(
+    results: list[ValidationResult], *, keys: tuple[str, ...]
+) -> list[dict[str, Any]]:
     grouped: dict[tuple[Any, ...], list[ValidationResult]] = {}
     for result in results:
         key = tuple(getattr(result, field) for field in keys)

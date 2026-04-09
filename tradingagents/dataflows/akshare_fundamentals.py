@@ -31,11 +31,15 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
                 dataframe = run_without_proxy(lambda: ak.stock_hk_company_profile_em(symbol=symbol))
             except Exception:
                 dataframe = run_without_proxy(
-                    lambda: ak.stock_financial_hk_report_em(stock=symbol, symbol="资产负债表", indicator="年报").head(50)
+                    lambda: ak.stock_financial_hk_report_em(
+                        stock=symbol, symbol="资产负债表", indicator="年报"
+                    ).head(50)
                 )
         else:
             dataframe = run_without_proxy(
-                lambda: ak.stock_financial_us_report_em(stock=symbol, symbol="资产负债表", indicator="年报").head(50)
+                lambda: ak.stock_financial_us_report_em(
+                    stock=symbol, symbol="资产负债表", indicator="年报"
+                ).head(50)
             )
         return format_dataframe_report(
             f"AKShare fundamentals for {ticker}",
@@ -78,7 +82,9 @@ def _statement_report(ticker: str, statement_type: str, freq: str) -> str:
                 "income_statement": "利润表",
             }[statement_type]
             dataframe = run_without_proxy(
-                lambda: ak.stock_financial_hk_report_em(stock=symbol, symbol=section, indicator="年报")
+                lambda: ak.stock_financial_hk_report_em(
+                    stock=symbol, symbol=section, indicator="年报"
+                )
             )
         else:
             section = {
@@ -87,7 +93,9 @@ def _statement_report(ticker: str, statement_type: str, freq: str) -> str:
                 "income_statement": "利润表",
             }[statement_type]
             dataframe = run_without_proxy(
-                lambda: ak.stock_financial_us_report_em(stock=symbol, symbol=section, indicator="年报")
+                lambda: ak.stock_financial_us_report_em(
+                    stock=symbol, symbol=section, indicator="年报"
+                )
             )
 
         title = {

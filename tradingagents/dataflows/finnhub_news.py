@@ -16,7 +16,13 @@ def get_news(ticker: str, start_date: str, end_date: str) -> str:
         return format_dataframe_report(
             f"Finnhub news for {ticker}",
             dataframe,
-            {"Vendor": "finnhub", "Market": market, "Vendor symbol": symbol, "Start date": start_date, "End date": end_date},
+            {
+                "Vendor": "finnhub",
+                "Market": market,
+                "Vendor symbol": symbol,
+                "Start date": start_date,
+                "End date": end_date,
+            },
         )
     except Exception as exc:
         return f"Error retrieving news for {ticker} via finnhub: {exc}"
@@ -29,7 +35,12 @@ def get_global_news(curr_date: str, look_back_days: int = 7, limit: int = 50) ->
         return format_dataframe_report(
             "Finnhub global news",
             dataframe,
-            {"Vendor": "finnhub", "Date": curr_date, "Look back days": look_back_days, "Limit": limit},
+            {
+                "Vendor": "finnhub",
+                "Date": curr_date,
+                "Look back days": look_back_days,
+                "Limit": limit,
+            },
         )
     except Exception as exc:
         return f"Error retrieving global news via finnhub: {exc}"

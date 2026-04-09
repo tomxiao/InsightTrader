@@ -220,7 +220,9 @@ class ValidationRunner:
                     success="yes" if result.success else "no",
                     duration=result.duration_ms,
                     pt=result.usage_prompt_tokens if result.usage_prompt_tokens is not None else "",
-                    ct=result.usage_completion_tokens if result.usage_completion_tokens is not None else "",
+                    ct=result.usage_completion_tokens
+                    if result.usage_completion_tokens is not None
+                    else "",
                     tt=result.usage_total_tokens if result.usage_total_tokens is not None else "",
                 )
             )

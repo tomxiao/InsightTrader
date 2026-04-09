@@ -4,11 +4,19 @@ import pandas as pd
 
 from .formatting import format_dataframe_report, standardize_ohlcv_dataframe
 from .indicator_utils import compute_indicator_report
-from .market_resolver import MARKET_A_SHARE, MARKET_HK, MARKET_US, detect_market, normalize_symbol_for_vendor
+from .market_resolver import (
+    MARKET_A_SHARE,
+    MARKET_HK,
+    MARKET_US,
+    detect_market,
+    normalize_symbol_for_vendor,
+)
 from .tushare_common import get_tushare_pro
 
 
-def _fetch_tushare_ohlcv(symbol: str, start_date: str, end_date: str) -> tuple[pd.DataFrame, str, str]:
+def _fetch_tushare_ohlcv(
+    symbol: str, start_date: str, end_date: str
+) -> tuple[pd.DataFrame, str, str]:
     market = detect_market(symbol)
     ts_code = normalize_symbol_for_vendor(symbol, "tushare", market)
     pro = get_tushare_pro()
@@ -25,7 +33,6 @@ def _fetch_tushare_ohlcv(symbol: str, start_date: str, end_date: str) -> tuple[p
     )
     if dataframe is None or dataframe.empty:
         return pd.DataFrame(), market, ts_code
-    date_column = "trade_date" if "trade_date" in dataframe.columns else "date"
     normalized = standardize_ohlcv_dataframe(
         dataframe,
         {
@@ -63,7 +70,9 @@ def get_stock(symbol: str, start_date: str, end_date: str) -> str:
 
 def get_indicator(symbol: str, indicator: str, curr_date: str, look_back_days: int = 30) -> str:
     try:
-        start_date = (pd.Timestamp(curr_date) - pd.Timedelta(days=max(look_back_days * 3, 365))).strftime("%Y-%m-%d")
+        start_date = (
+            pd.Timestamp(curr_date) - pd.Timedelta(days=max(look_back_days * 3, 365))
+        ).strftime("%Y-%m-%d")
         dataframe, _market, _ts_code = _fetch_tushare_ohlcv(symbol, start_date, curr_date)
         return compute_indicator_report(dataframe, indicator, curr_date, look_back_days)
     except Exception as exc:

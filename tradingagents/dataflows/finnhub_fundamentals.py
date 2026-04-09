@@ -24,7 +24,9 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
         return f"Error retrieving fundamentals for {ticker} via finnhub: {exc}"
 
 
-def _financials_report_to_frame(ticker: str, curr_date: str | None = None) -> tuple[dict, pd.DataFrame, str, str]:
+def _financials_report_to_frame(
+    ticker: str, curr_date: str | None = None
+) -> tuple[dict, pd.DataFrame, str, str]:
     market = detect_market(ticker)
     symbol = normalize_symbol_for_vendor(ticker, "finnhub", market)
     report = get_finnhub_client().financials_reported(symbol=symbol, freq="annual")
@@ -50,10 +52,14 @@ def _financials_report_to_frame(ticker: str, curr_date: str | None = None) -> tu
     return report, pd.DataFrame(rows), market, symbol
 
 
-def _section_report(ticker: str, section_name: str, title: str, freq: str = "quarterly", curr_date: str = None) -> str:
+def _section_report(
+    ticker: str, section_name: str, title: str, freq: str = "quarterly", curr_date: str = None
+) -> str:
     try:
         _report, dataframe, market, symbol = _financials_report_to_frame(ticker, curr_date)
-        filtered = dataframe[dataframe["section"] == section_name] if not dataframe.empty else dataframe
+        filtered = (
+            dataframe[dataframe["section"] == section_name] if not dataframe.empty else dataframe
+        )
         return format_dataframe_report(
             title,
             filtered,

@@ -1,17 +1,23 @@
+import importlib
 import json
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 
-
 VALIDATION_ROOT = Path(__file__).resolve().parents[1] / "validation" / "llm-response-lab"
 if str(VALIDATION_ROOT) not in sys.path:
     sys.path.insert(0, str(VALIDATION_ROOT))
 
-from llm_response_lab.loader import ProviderConfig, load_cases, load_provider_configs
-from llm_response_lab.providers import extract_usage
-from llm_response_lab.runner import ValidationRunner
+llm_response_lab_loader = importlib.import_module("llm_response_lab.loader")
+llm_response_lab_providers = importlib.import_module("llm_response_lab.providers")
+llm_response_lab_runner = importlib.import_module("llm_response_lab.runner")
+
+ProviderConfig = llm_response_lab_loader.ProviderConfig
+load_cases = llm_response_lab_loader.load_cases
+load_provider_configs = llm_response_lab_loader.load_provider_configs
+extract_usage = llm_response_lab_providers.extract_usage
+ValidationRunner = llm_response_lab_runner.ValidationRunner
 
 
 class FakeResponse:
