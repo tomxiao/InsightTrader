@@ -10,7 +10,7 @@ from typing import Any, Callable, Iterable
 
 import pandas as pd
 
-from tradingagents.dataflows.akshare_common import get_akshare_module, run_without_proxy
+from tradingagents.dataflows.akshare_common import fetch_stock_news_em, get_akshare_module, run_without_proxy
 from tradingagents.dataflows.finnhub_common import get_finnhub_client
 from tradingagents.dataflows.formatting import format_dataframe_report
 from tradingagents.dataflows.market_resolver import (
@@ -506,8 +506,7 @@ def _fetch_akshare_keyword_news(case: MarketNewsCase, variant: KeywordVariant) -
 
     for candidate in symbol_candidates:
         try:
-            dataframe = run_without_proxy(lambda candidate=candidate: ak.stock_news_em(symbol=candidate))
-            dataframe = _coerce_dataframe(dataframe)
+            dataframe = fetch_stock_news_em(candidate)
             dataframe = _filter_dataframe_by_date(dataframe, case.start_date, case.end_date)
             selected_symbol = candidate
             strategy = "stock_news_em"

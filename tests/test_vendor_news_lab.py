@@ -133,22 +133,7 @@ class VendorNewsLabTests(unittest.TestCase):
         self.assertEqual(name_candidates, ["腾讯控股"])
 
     def test_fetch_akshare_keyword_news_tries_raw_keyword_before_fallback(self):
-        class FakeAkshare:
-            def __init__(self):
-                self.symbol_calls: list[str] = []
-
-            def stock_news_em(self, symbol):
-                self.symbol_calls.append(symbol)
-                if symbol == "腾讯控股":
-                    return pd.DataFrame(
-                        [{"标题": "腾讯控股回购股份", "发布时间": "2026-04-03 10:00:00"}]
-                    )
-                return pd.DataFrame()
-
-            def stock_news_main_cx(self):
-                raise AssertionError("fallback should not be used when raw keyword succeeds")
-
-        fake_ak = FakeAkshare()
+        symbol_calls: list[str] = []
         case = MarketNewsCase(
             case_id="hk_case",
             market="hk",
@@ -162,15 +147,23 @@ class VendorNewsLabTests(unittest.TestCase):
         )
 
         with (
-            mock.patch("vendor_news_lab.runner.get_akshare_module", return_value=fake_ak),
-            mock.patch("vendor_news_lab.runner.run_without_proxy", side_effect=lambda func: func()),
+            mock.patch("vendor_news_lab.runner.get_akshare_module") as ak_mock,
+            mock.patch(
+                "vendor_news_lab.runner.fetch_stock_news_em",
+                side_effect=lambda symbol: symbol_calls.append(symbol) or pd.DataFrame(
+                    [{"标题": "腾讯控股回购股份", "发布时间": "2026-04-03 10:00:00"}]
+                ),
+            ),
         ):
+            ak_mock.return_value.stock_news_main_cx.side_effect = AssertionError(
+                "fallback should not be used when raw keyword succeeds"
+            )
             response = _fetch_akshare_keyword_news(
                 case,
                 build_keyword_variants(case)[4],
             )
 
-        self.assertEqual(fake_ak.symbol_calls, ["腾讯控股"])
+        self.assertEqual(symbol_calls, ["腾讯控股"])
         self.assertIn("腾讯控股回购股份", response)
         self.assertIn("# Vendor symbol: 腾讯控股", response)
 

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .akshare_common import get_akshare_module, run_without_proxy
+from .akshare_common import fetch_stock_news_em, get_akshare_module, run_without_proxy
 from .formatting import format_dataframe_report, unsupported_response
 from .market_resolver import detect_market, normalize_symbol_for_vendor
 
@@ -13,7 +13,7 @@ def get_news(ticker: str, start_date: str, end_date: str) -> str:
     symbol = normalize_symbol_for_vendor(ticker, "akshare", market)
     try:
         try:
-            dataframe = run_without_proxy(lambda: ak.stock_news_em(symbol=symbol))
+            dataframe = fetch_stock_news_em(symbol)
         except Exception:
             dataframe = run_without_proxy(lambda: ak.stock_news_main_cx())
         return format_dataframe_report(
