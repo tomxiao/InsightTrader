@@ -1,20 +1,25 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 
 import { analysisApi } from '@api/analysis'
+import { authApi } from '@api/auth'
 import { conversationsApi } from '@api/conversations'
 import TaskStatusBanner from '@components/conversation/TaskStatusBanner.vue'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
+import { useAuthStore } from '@stores/auth'
 import { useConversationStore } from '@stores/conversation'
 import { useTaskStore } from '@stores/task'
 import type { ConversationMessage, ConversationSummary } from '@/types/conversation'
 import { formatConversationGroup, formatTimeLabel } from '@utils/format'
 
 const router = useRouter()
+const authStore = useAuthStore()
 const conversationStore = useConversationStore()
 const taskStore = useTaskStore()
+const accountMenuOpen = ref(false)
+const logoutLoading = ref(false)
 
 let pollingTimer: number | null = null
 
@@ -77,6 +82,9 @@ const composerHint = computed(() =>
 const currentConversationStatusLabel = computed(
   () => conversationStatusLabelMap[currentConversation.value.status] || '待开始'
 )
+
+const accountDisplayName = computed(() => authStore.user?.displayName || authStore.user?.username || '未登录')
+const accountInitial = computed(() => accountDisplayName.value.trim().charAt(0).toUpperCase() || 'U')
 
 const loadConversation = async (conversationId: string) => {
   const detail = await conversationsApi.getConversation(conversationId)
@@ -178,9 +186,39 @@ const openConversation = async (conversationId: string) => {
   try {
     await loadConversation(conversationId)
     conversationStore.setDrawerOpen(false)
+    accountMenuOpen.value = false
   } catch (error) {
     showToast((error as Error).message || '加载会话失败')
   }
+}
+
+const clearLocalState = () => {
+  conversationStore.setConversations([])
+  conversationStore.resetCurrentConversation()
+  conversationStore.setDrawerOpen(false)
+  taskStore.clearTask()
+  taskStore.setDraftMessage('')
+  authStore.clearAuth()
+}
+
+const logout = async () => {
+  logoutLoading.value = true
+  try {
+    await authApi.logout()
+  } catch {
+    // Backend session may already be invalid; local state still needs clearing.
+  } finally {
+    clearLocalState()
+    accountMenuOpen.value = false
+    logoutLoading.value = false
+  }
+  showToast('已退出登录')
+  router.replace({ name: 'Login' })
+}
+
+const closeDrawer = () => {
+  conversationStore.setDrawerOpen(false)
+  accountMenuOpen.value = false
 }
 
 const stopPolling = () => {
@@ -254,6 +292,15 @@ watch(
   { immediate: true }
 )
 
+watch(
+  () => conversationStore.isDrawerOpen,
+  open => {
+    if (!open) {
+      accountMenuOpen.value = false
+    }
+  }
+)
+
 onMounted(bootstrap)
 onBeforeUnmount(stopPolling)
 </script>
@@ -269,9 +316,6 @@ onBeforeUnmount(stopPolling)
           <strong class="conversation-page__header-title">{{ conversationStore.currentTitle }}</strong>
           <span class="conversation-page__header-subtitle">{{ currentConversationStatusLabel }}</span>
         </div>
-        <van-button plain size="small" class="conversation-page__icon-button" @click="router.push({ name: 'Settings' })">
-          <van-icon name="setting-o" />
-        </van-button>
       </div>
     </template>
 
@@ -290,11 +334,19 @@ onBeforeUnmount(stopPolling)
         :show="conversationStore.isDrawerOpen"
         position="left"
         :style="{ width: '61.8%', height: '100%' }"
-        @click-overlay="conversationStore.setDrawerOpen(false)"
+        @click-overlay="closeDrawer"
       >
-        <div class="conversation-drawer">
+        <div class="conversation-drawer" @click="accountMenuOpen = false">
           <div class="conversation-drawer__brand">
-            <strong>InsightTrader</strong>
+            <div class="conversation-drawer__brand-top">
+              <strong>InsightTrader</strong>
+              <button class="conversation-drawer__collapse" type="button" aria-label="收起抽屉" @click.stop="closeDrawer">
+                <span class="conversation-drawer__collapse-icon" aria-hidden="true">
+                  <span />
+                  <span />
+                </span>
+              </button>
+            </div>
             <p class="mobile-muted">在同一个线程里发起分析、查看报告、继续追问。</p>
           </div>
 
@@ -319,13 +371,29 @@ onBeforeUnmount(stopPolling)
           </div>
 
           <div class="conversation-drawer__account">
-            <div>
-              <strong>账户与偏好</strong>
-              <p class="mobile-muted">查看登录状态、帮助说明和退出入口。</p>
+            <div class="conversation-drawer__account-card" @click.stop>
+              <div class="conversation-drawer__account-main">
+                <div class="conversation-drawer__account-avatar">{{ accountInitial }}</div>
+                <div class="conversation-drawer__account-meta">
+                  <strong>{{ accountDisplayName }}</strong>
+                </div>
+              </div>
+              <button
+                class="conversation-drawer__account-trigger"
+                type="button"
+                :aria-expanded="accountMenuOpen"
+                aria-label="打开账号菜单"
+                @click.stop="accountMenuOpen = !accountMenuOpen"
+              >
+                <van-icon name="ellipsis" />
+              </button>
+              <div v-if="accountMenuOpen" class="conversation-drawer__account-menu">
+                <button class="conversation-drawer__account-menu-item" type="button" :disabled="logoutLoading" @click="logout">
+                  <van-icon name="revoke" />
+                  <span>{{ logoutLoading ? '退出中...' : '退出登录' }}</span>
+                </button>
+              </div>
             </div>
-            <van-button plain size="small" @click="router.push({ name: 'Settings' })">
-              打开
-            </van-button>
           </div>
         </div>
       </van-popup>
@@ -391,7 +459,7 @@ onBeforeUnmount(stopPolling)
               <template v-else>
                 <div class="conversation-bubble">
                   <span v-if="message.role !== 'assistant'" class="conversation-bubble__role">
-                    {{ message.role === 'user' ? '你' : message.role === 'assistant' ? 'InsightTrader' : '系统' }}
+                    {{ message.role === 'user' ? '你' : '系统' }}
                   </span>
                   <p>{{ getMessageText(message) }}</p>
                   <small>{{ formatTimeLabel(message.createdAt) }}</small>
@@ -433,11 +501,10 @@ onBeforeUnmount(stopPolling)
 }
 
 .conversation-page__header {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 16px 6px;
+  padding: 10px 16px 8px;
 }
 
 .conversation-page__header :deep(.van-button) {
@@ -456,18 +523,19 @@ onBeforeUnmount(stopPolling)
 }
 
 .conversation-page__header-main {
+  flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1px;
+  align-items: flex-start;
+  gap: 2px;
 }
 
 .conversation-page__header-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  text-align: center;
+  text-align: left;
   font-size: 16px;
   font-weight: 700;
   line-height: 1.2;
@@ -755,8 +823,49 @@ onBeforeUnmount(stopPolling)
   gap: 8px;
 }
 
+.conversation-drawer__brand-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .conversation-drawer__brand strong {
   font-size: 20px;
+}
+
+.conversation-drawer__collapse {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--mobile-color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.conversation-drawer__collapse-icon {
+  width: 14px;
+  height: 14px;
+  display: grid;
+  grid-template-columns: 1fr 3px;
+  gap: 3px;
+}
+
+.conversation-drawer__collapse-icon span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: currentColor;
+  opacity: 0.9;
+}
+
+.conversation-drawer__collapse-icon span:last-child {
+  opacity: 0.45;
 }
 
 .conversation-drawer__groups {
@@ -816,12 +925,130 @@ onBeforeUnmount(stopPolling)
 }
 
 .conversation-drawer__account {
+  position: relative;
+  padding-top: 4px;
+}
+
+.conversation-drawer__account-card {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--mobile-color-border);
+  min-height: 56px;
+  padding: 8px 10px 8px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.conversation-drawer__account-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conversation-drawer__account-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  color: var(--mobile-color-text);
+  font-size: 14px;
+  font-weight: 700;
+  background: linear-gradient(180deg, rgba(111, 157, 255, 0.9), rgba(79, 121, 255, 0.82));
+}
+
+.conversation-drawer__account-meta {
+  min-width: 0;
+}
+
+.conversation-drawer__account-meta strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.conversation-drawer__account-trigger {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 17px;
+  padding: 0;
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--mobile-color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.conversation-drawer__account-trigger :deep(.van-icon) {
+  font-size: 18px;
+}
+
+.conversation-drawer__account-menu {
+  position: absolute;
+  left: 4px;
+  bottom: calc(100% + 12px);
+  min-width: 170px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 18px;
+  background: rgba(62, 64, 71, 0.96);
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.conversation-drawer__account-menu::after {
+  content: '';
+  position: absolute;
+  left: 28px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: rgba(62, 64, 71, 0.96);
+  border-right: 1px solid rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  transform: rotate(45deg);
+}
+
+.conversation-drawer__account-menu-item {
+  width: 100%;
+  border: 0;
+  border-radius: 14px;
+  padding: 13px 14px;
+  background: transparent;
+  color: var(--mobile-color-text);
+  font-size: 14px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  transition: background-color 0.18s ease;
+}
+
+.conversation-drawer__account-menu-item:hover,
+.conversation-drawer__account-menu-item:active {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.conversation-drawer__account-menu-item :deep(.van-icon) {
+  font-size: 16px;
+  color: rgba(247, 248, 250, 0.9);
+}
+
+.conversation-drawer__account-menu-item:disabled {
+  opacity: 0.65;
 }
 
 </style>

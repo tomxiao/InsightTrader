@@ -14,17 +14,26 @@ class UserRepository:
     def __init__(self, database):
         self.collection = database[MongoCollections().users]
 
-    def ensure_dev_user(self, username: str) -> dict:
-        document = self.collection.find_one({"username": username})
-        if document:
-            return document
-
+    def create_user(
+        self,
+        *,
+        username: str,
+        display_name: str | None,
+        password_hash: str,
+        role: str = "user",
+        status: str = "active",
+    ) -> dict:
+        now = _utc_now_iso()
         user = {
             "id": str(uuid4()),
             "username": username,
-            "displayName": username,
-            "createdAt": _utc_now_iso(),
-            "updatedAt": _utc_now_iso(),
+            "displayName": display_name or username,
+            "passwordHash": password_hash,
+            "role": role,
+            "status": status,
+            "lastLoginAt": None,
+            "createdAt": now,
+            "updatedAt": now,
         }
         self.collection.insert_one(user)
         return user
@@ -34,3 +43,10 @@ class UserRepository:
 
     def get_by_username(self, username: str) -> dict | None:
         return self.collection.find_one({"username": username}, {"_id": 0})
+
+    def update_last_login(self, user_id: str) -> None:
+        now = _utc_now_iso()
+        self.collection.update_one(
+            {"id": user_id},
+            {"$set": {"lastLoginAt": now, "updatedAt": now}},
+        )

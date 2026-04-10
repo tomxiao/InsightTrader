@@ -11,6 +11,7 @@ from ta_service.config.settings import Settings
 @dataclass(frozen=True)
 class MongoCollections:
     users: str = "users"
+    user_sessions: str = "user_sessions"
     conversations: str = "conversations"
     messages: str = "messages"
     analysis_tasks: str = "analysis_tasks"

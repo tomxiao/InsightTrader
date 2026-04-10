@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { userApi } from '@api/user'
 import { useAuthStore } from '@stores/auth'
 
 const routes = [
@@ -31,15 +32,6 @@ const routes = [
       title: '完整报告',
       requiresAuth: true
     }
-  },
-  {
-    path: '/settings',
-    name: 'Settings',
-    component: () => import('@views/settings/SettingsPage.vue'),
-    meta: {
-      title: '设置',
-      requiresAuth: true
-    }
   }
 ]
 
@@ -48,8 +40,19 @@ const router = createRouter({
   routes
 })
 
-router.beforeEach(to => {
+router.beforeEach(async to => {
   const authStore = useAuthStore()
+
+  if (authStore.token && !authStore.hasCheckedSession) {
+    try {
+      const user = await userApi.getCurrentUser()
+      authStore.setUser(user)
+    } catch {
+      // 401 handling is centralized in the axios interceptor.
+    } finally {
+      authStore.markSessionChecked(true)
+    }
+  }
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     return { name: 'Login' }

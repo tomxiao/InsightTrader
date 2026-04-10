@@ -4,10 +4,12 @@ from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from ta_service.config.settings import Settings, get_settings
+from ta_service.models.auth import MobileUser
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.repos.reports import ReportRepository
+from ta_service.repos.user_sessions import UserSessionRepository
 from ta_service.repos.users import UserRepository
 from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.auth_service import AuthService
@@ -32,6 +34,10 @@ def get_redis(request: Request):
 
 def get_user_repository(request: Request) -> UserRepository:
     return UserRepository(get_mongo_db(request))
+
+
+def get_user_session_repository(request: Request) -> UserSessionRepository:
+    return UserSessionRepository(get_mongo_db(request))
 
 
 def get_conversation_repository(request: Request) -> ConversationRepository:
@@ -63,22 +69,38 @@ def get_job_queue(
 
 def get_auth_service(
     user_repo: UserRepository = Depends(get_user_repository),
+    session_repo: UserSessionRepository = Depends(get_user_session_repository),
     settings: Settings = Depends(get_settings_dependency),
 ) -> AuthService:
-    return AuthService(user_repo=user_repo, settings=settings)
+    return AuthService(
+        user_repo=user_repo,
+        session_repo=session_repo,
+        settings=settings,
+    )
+
+
+def get_access_token(
+    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+) -> str:
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
+    return credentials.credentials
 
 
 def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(security),
+    token: str = Depends(get_access_token),
     auth_service: AuthService = Depends(get_auth_service),
 ):
-    if not credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing token")
-
-    user = auth_service.get_current_user(credentials.credentials)
+    user = auth_service.get_current_user(token)
     if not user:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
     return user
+
+
+def require_admin(current_user: MobileUser = Depends(get_current_user)) -> MobileUser:
+    if current_user.role != "admin":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
+    return current_user
 
 
 def get_conversation_service(

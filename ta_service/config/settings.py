@@ -32,6 +32,9 @@ class Settings:
 
     results_root: Path = Path(os.getenv("TA_SERVICE_RESULTS_DIR", "./results/ta_service"))
     auth_token_prefix: str = os.getenv("TA_SERVICE_AUTH_TOKEN_PREFIX", "dev-token")
+    auth_session_ttl_seconds: int = int(
+        os.getenv("TA_SERVICE_AUTH_SESSION_TTL_SECONDS", str(7 * 24 * 60 * 60))
+    )
     default_output_language: str = os.getenv(
         "TA_SERVICE_DEFAULT_OUTPUT_LANGUAGE", "Chinese"
     )

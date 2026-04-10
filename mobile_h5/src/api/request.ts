@@ -20,7 +20,9 @@ request.interceptors.request.use(config => {
 request.interceptors.response.use(
   response => response,
   error => {
-    if (error.response?.status === 401) {
+    const isLoginRequest = axios.isAxiosError(error) && error.config?.url?.endsWith('/auth/login')
+
+    if (error.response?.status === 401 && !isLoginRequest) {
       const authStore = useAuthStore()
       authStore.clearAuth()
 
