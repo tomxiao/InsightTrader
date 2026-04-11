@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import HTTPException, status
 
 from ta_service.config.settings import Settings
@@ -23,6 +25,7 @@ class AnalysisService:
         report_repo: ReportRepository,
         queue: AnalysisJobQueue,
         settings: Settings,
+        task_launcher: Callable[[str], object] = spawn_analysis_task_runner,
     ):
         self.task_repo = task_repo
         self.conversation_repo = conversation_repo
@@ -30,6 +33,7 @@ class AnalysisService:
         self.report_repo = report_repo
         self.queue = queue
         self.settings = settings
+        self.task_launcher = task_launcher
 
     def get_task_status(self, *, task_id: str, user_id: str) -> AnalysisTaskStatusResponse | None:
         document = self.task_repo.get_for_user(task_id=task_id, user_id=user_id)
@@ -51,6 +55,25 @@ class AnalysisService:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Conversation not found",
+            )
+
+        if conversation.get("status") != "ready_to_analyze":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation is not ready for analysis",
+            )
+
+        confirmed_stock = conversation.get("confirmedStock") or {}
+        confirmed_ticker = (confirmed_stock.get("ticker") or "").strip().upper()
+        if not confirmed_ticker:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation does not have a confirmed stock target",
+            )
+        if payload.ticker.strip().upper() != confirmed_ticker:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Analysis ticker does not match the confirmed stock target",
             )
 
         active_task = self.task_repo.get_active_for_user(user_id)
@@ -75,13 +98,6 @@ class AnalysisService:
             selected_analysts=payload.selectedAnalysts,
         )
 
-        request_message = (payload.prompt or "").strip() or f"请分析 {payload.ticker}"
-        self.message_repo.create(
-            conversation_id=payload.conversationId,
-            role="user",
-            message_type="text",
-            content=request_message,
-        )
         self.message_repo.create(
             conversation_id=payload.conversationId,
             role="system",
@@ -102,7 +118,7 @@ class AnalysisService:
         )
 
         try:
-            spawn_analysis_task_runner(document["taskId"])
+            self.task_launcher(document["taskId"])
             self.task_repo.update_status(
                 document["taskId"],
                 status="pending",

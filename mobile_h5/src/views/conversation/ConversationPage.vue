@@ -12,6 +12,13 @@ import { useAuthStore } from '@stores/auth'
 import { useConversationStore } from '@stores/conversation'
 import { useTaskStore } from '@stores/task'
 import type { ConversationMessage, ConversationSummary } from '@/types/conversation'
+import type {
+  ResolutionAction,
+  ResolutionCandidate,
+  ResolutionMessageContent,
+  ResolutionResponse,
+  ResolutionStatus
+} from '@/types/resolution'
 import { formatConversationGroup, formatTimeLabel } from '@utils/format'
 
 const router = useRouter()
@@ -20,6 +27,8 @@ const conversationStore = useConversationStore()
 const taskStore = useTaskStore()
 const accountMenuOpen = ref(false)
 const logoutLoading = ref(false)
+const resolutionActionLoading = ref(false)
+const analysisLaunchLoading = ref(false)
 
 let pollingTimer: number | null = null
 
@@ -66,7 +75,7 @@ const isFollowupMode = computed(
   () =>
     Boolean(currentConversation.value.lastReportId) &&
     !hasRunningTask.value &&
-    currentConversation.value.status !== 'idle'
+    ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
 )
 
 const placeholderText = computed(() =>
@@ -76,6 +85,8 @@ const placeholderText = computed(() =>
 const composerHint = computed(() =>
   hasRunningTask.value
     ? '分析进行中，消息会先保留为草稿。'
+    : currentConversation.value.status === 'ready_to_analyze'
+      ? '标的已确认，可以开始正式分析，或继续输入发起新的标的识别。'
     : ''
 )
 
@@ -133,12 +144,140 @@ const bootstrap = async () => {
   }
 }
 
-const extractTicker = (input: string) => {
-  const match = input.match(/([A-Z]{1,5}(?:\.[A-Z]{1,5})?|\d{3,6}(?:\.[A-Z]{2})?|[\u4e00-\u9fa5]{2,12})/)
-  return match?.[1] || input.trim()
+const todayTradeDate = () => new Date().toISOString().slice(0, 10)
+
+const isResolutionContent = (content: ConversationMessage['content']): content is ResolutionMessageContent =>
+  typeof content === 'object' && content !== null
+
+const getResolutionContent = (message: ConversationMessage): ResolutionMessageContent | null =>
+  message.messageType === 'ticker_resolution' && isResolutionContent(message.content) ? message.content : null
+
+const getResolutionStatus = (message: ConversationMessage): ResolutionStatus | '' =>
+  getResolutionContent(message)?.status || ''
+
+const getResolutionId = (message: ConversationMessage) =>
+  getResolutionContent(message)?.resolutionId || ''
+
+const getResolutionCandidates = (message: ConversationMessage): ResolutionCandidate[] =>
+  getResolutionContent(message)?.candidates || []
+
+const getResolutionCardTitle = (message: ConversationMessage) => {
+  const status = getResolutionStatus(message)
+  if (status === 'need_confirm') return '请确认分析标的'
+  if (status === 'need_disambiguation') return '请选择分析标的'
+  if (status === 'resolved') return '标的已确认'
+  if (status === 'unsupported') return '当前范围提示'
+  if (status === 'failed') return '需要重新输入'
+  return '继续补充标的信息'
 }
 
-const todayTradeDate = () => new Date().toISOString().slice(0, 10)
+const getResolutionFocusText = (message: ConversationMessage) => {
+  const focusPoints = getResolutionContent(message)?.focusPoints || []
+  return focusPoints.length ? `关注点：${focusPoints.join('、')}` : ''
+}
+
+const getCandidateLabel = (candidate: ResolutionCandidate) =>
+  `${candidate.name}（${candidate.ticker}）${candidate.market ? ` · ${candidate.market}` : ''}`
+
+const activeResolutionId = computed(() => {
+  for (let index = currentMessages.value.length - 1; index >= 0; index -= 1) {
+    const message = currentMessages.value[index]
+    const content = getResolutionContent(message)
+    if (!content?.resolutionId) continue
+    if (content.status === 'need_confirm' || content.status === 'need_disambiguation') {
+      return content.resolutionId
+    }
+  }
+  return ''
+})
+
+const latestResolvedResolution = computed(() => {
+  for (let index = currentMessages.value.length - 1; index >= 0; index -= 1) {
+    const content = getResolutionContent(currentMessages.value[index])
+    if (content?.status === 'resolved' && content.ticker && content.analysisPrompt) {
+      return content
+    }
+  }
+  return null
+})
+
+const canLaunchReadyAnalysis = computed(
+  () =>
+    currentConversation.value.status === 'ready_to_analyze' &&
+    !hasRunningTask.value &&
+    Boolean(latestResolvedResolution.value?.ticker) &&
+    !analysisLaunchLoading.value
+)
+
+const canInteractWithResolution = (message: ConversationMessage) => {
+  const resolutionId = getResolutionId(message)
+  if (!resolutionId) return false
+  return resolutionId === activeResolutionId.value && !hasRunningTask.value
+}
+
+const createAnalysisTask = async (ticker: string, prompt: string) => {
+  const task = await analysisApi.createTask({
+    conversationId: currentConversation.value.id,
+    ticker,
+    tradeDate: todayTradeDate(),
+    prompt
+  })
+  taskStore.setTask(task)
+  conversationStore.updateConversationStatus('analyzing', task.taskId, task.reportId)
+  taskStore.setDraftMessage('')
+  await loadConversation(currentConversation.value.id)
+  startPolling()
+}
+
+const startAnalysisFromResolution = async (response: ResolutionResponse) => {
+  if (!response.ticker || response.conversationStatus !== 'ready_to_analyze') return
+  analysisLaunchLoading.value = true
+  try {
+    await createAnalysisTask(response.ticker, response.analysisPrompt || response.promptMessage)
+  } finally {
+    analysisLaunchLoading.value = false
+  }
+}
+
+const launchReadyAnalysis = async () => {
+  const resolved = latestResolvedResolution.value
+  if (!resolved?.ticker) return
+  analysisLaunchLoading.value = true
+  try {
+    await createAnalysisTask(resolved.ticker, resolved.analysisPrompt || resolved.text || '')
+  } catch (error) {
+    showToast((error as Error).message || '发起分析失败，请稍后重试')
+  } finally {
+    analysisLaunchLoading.value = false
+  }
+}
+
+const applyResolutionResponse = async (response: ResolutionResponse) => {
+  conversationStore.appendMessages(response.messages)
+  conversationStore.updateConversationStatus(response.conversationStatus)
+  if (response.status === 'resolved' && response.conversationStatus === 'ready_to_analyze') {
+    await startAnalysisFromResolution(response)
+    return
+  }
+  taskStore.setDraftMessage('')
+}
+
+const submitResolutionAction = async (action: ResolutionAction, resolutionId: string, ticker?: string) => {
+  if (!currentConversation.value.id || !resolutionId) return
+  resolutionActionLoading.value = true
+  try {
+    const response = await conversationsApi.confirmResolution(currentConversation.value.id, {
+      action,
+      resolutionId,
+      ticker
+    })
+    await applyResolutionResponse(response)
+  } catch (error) {
+    showToast((error as Error).message || '操作失败，请稍后再试')
+  } finally {
+    resolutionActionLoading.value = false
+  }
+}
 
 const submitPrompt = async () => {
   const text = promptModel.value.trim()
@@ -166,17 +305,8 @@ const submitPrompt = async () => {
       return
     }
 
-    const task = await analysisApi.createTask({
-      conversationId: currentConversation.value.id,
-      ticker: extractTicker(text),
-      tradeDate: todayTradeDate(),
-      prompt: text
-    })
-    taskStore.setTask(task)
-    conversationStore.updateConversationStatus('analyzing', task.taskId, task.reportId)
-    taskStore.setDraftMessage('')
-    await loadConversation(currentConversation.value.id)
-    startPolling()
+    const response = await conversationsApi.resolve(currentConversation.value.id, { message: text })
+    await applyResolutionResponse(response)
   } catch (error) {
     showToast((error as Error).message || '发送失败，请稍后再试')
   }
@@ -404,7 +534,7 @@ onBeforeUnmount(stopPolling)
             <div class="conversation-empty__hero">
               <p class="conversation-empty__eyebrow">InsightTrader Mobile</p>
               <h2>今晚想研究什么？</h2>
-              <p class="mobile-muted">用自然语言输入股票、公司或观点。我会先发起分析，再把结论留在这条对话里。</p>
+              <p class="mobile-muted">用自然语言输入股票、公司或观点。我会先确认分析标的，再进入正式分析流程。</p>
             </div>
             <div class="conversation-empty__chips">
               <van-button
@@ -456,6 +586,64 @@ onBeforeUnmount(stopPolling)
                 </section>
               </template>
 
+              <template v-else-if="message.messageType === 'ticker_resolution'">
+                <section class="conversation-inline-card conversation-inline-card--resolution">
+                  <span class="conversation-inline-card__eyebrow">标的确认</span>
+                  <h3 class="conversation-inline-card__title">{{ getResolutionCardTitle(message) }}</h3>
+                  <p class="conversation-inline-card__description">{{ getMessageText(message) }}</p>
+                  <p v-if="getResolutionFocusText(message)" class="conversation-inline-card__meta">
+                    {{ getResolutionFocusText(message) }}
+                  </p>
+
+                  <div
+                    v-if="getResolutionStatus(message) === 'need_confirm' && canInteractWithResolution(message)"
+                    class="conversation-inline-card__actions"
+                  >
+                    <van-button
+                      size="small"
+                      type="primary"
+                      :loading="resolutionActionLoading"
+                      @click="submitResolutionAction('confirm', getResolutionId(message))"
+                    >
+                      确认标的
+                    </van-button>
+                    <van-button
+                      size="small"
+                      plain
+                      :disabled="resolutionActionLoading"
+                      @click="submitResolutionAction('restart', getResolutionId(message))"
+                    >
+                      重新输入
+                    </van-button>
+                  </div>
+
+                  <div
+                    v-else-if="getResolutionStatus(message) === 'need_disambiguation' && canInteractWithResolution(message)"
+                    class="conversation-inline-card__actions conversation-inline-card__actions--stack"
+                  >
+                    <van-button
+                      v-for="candidate in getResolutionCandidates(message)"
+                      :key="candidate.ticker"
+                      size="small"
+                      type="primary"
+                      plain
+                      :disabled="resolutionActionLoading"
+                      @click="submitResolutionAction('select', getResolutionId(message), candidate.ticker)"
+                    >
+                      {{ getCandidateLabel(candidate) }}
+                    </van-button>
+                    <van-button
+                      size="small"
+                      plain
+                      :disabled="resolutionActionLoading"
+                      @click="submitResolutionAction('restart', getResolutionId(message))"
+                    >
+                      重新输入
+                    </van-button>
+                  </div>
+                </section>
+              </template>
+
               <template v-else>
                 <div class="conversation-bubble">
                   <span v-if="message.role !== 'assistant'" class="conversation-bubble__role">
@@ -488,6 +676,15 @@ onBeforeUnmount(stopPolling)
             <span class="mobile-subtle">
               {{ composerHint }}
             </span>
+            <van-button
+              v-if="canLaunchReadyAnalysis"
+              size="small"
+              type="primary"
+              :loading="analysisLaunchLoading"
+              @click="launchReadyAnalysis"
+            >
+              开始分析
+            </van-button>
           </div>
         </div>
       </div>
@@ -743,6 +940,25 @@ onBeforeUnmount(stopPolling)
 
 .conversation-inline-card__action {
   margin-top: 12px;
+}
+
+.conversation-inline-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.conversation-inline-card__actions--stack {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.conversation-inline-card__meta {
+  margin: 8px 0 0;
+  color: var(--mobile-color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .conversation-input {

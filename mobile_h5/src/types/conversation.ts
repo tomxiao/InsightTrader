@@ -12,6 +12,7 @@ export type ConversationMessageType =
   | 'task_status'
   | 'summary_card'
   | 'report_card'
+  | 'ticker_resolution'
   | 'error'
 
 export interface ConversationSummary {
@@ -33,6 +34,22 @@ export interface ConversationMessage {
         text?: string
         reportId?: string
         title?: string
+        status?: string
+        resolutionId?: string
+        ticker?: string | null
+        name?: string | null
+        candidates?: Array<{
+          ticker: string
+          name: string
+          market?: string | null
+          exchange?: string | null
+          aliases?: string[]
+          score?: number | null
+          assetType?: string
+          isActive?: boolean | null
+        }>
+        analysisPrompt?: string
+        focusPoints?: string[]
       }
   createdAt: string
 }

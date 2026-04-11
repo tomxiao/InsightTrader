@@ -14,7 +14,10 @@ from ta_service.repos.users import UserRepository
 from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.auth_service import AuthService
 from ta_service.services.conversation_service import ConversationService
+from ta_service.services.resolution_agent import ResolutionAgent
+from ta_service.services.resolution_service import ResolutionService
 from ta_service.services.report_service import ReportService
+from ta_service.services.stock_lookup_gateway import StockLookupGateway
 from ta_service.workers.queue import AnalysisJobQueue
 
 security = HTTPBearer(auto_error=False)
@@ -112,6 +115,30 @@ def get_conversation_service(
         conversation_repo=conversation_repo,
         message_repo=message_repo,
         report_repo=report_repo,
+    )
+
+
+def get_stock_lookup_gateway() -> StockLookupGateway:
+    return StockLookupGateway()
+
+
+def get_resolution_agent(
+    stock_lookup_gateway: StockLookupGateway = Depends(get_stock_lookup_gateway),
+) -> ResolutionAgent:
+    return ResolutionAgent(stock_lookup_gateway=stock_lookup_gateway)
+
+
+def get_resolution_service(
+    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
+    message_repo: MessageRepository = Depends(get_message_repository),
+    resolution_agent: ResolutionAgent = Depends(get_resolution_agent),
+    stock_lookup_gateway: StockLookupGateway = Depends(get_stock_lookup_gateway),
+) -> ResolutionService:
+    return ResolutionService(
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+        resolution_agent=resolution_agent,
+        stock_lookup_gateway=stock_lookup_gateway,
     )
 
 

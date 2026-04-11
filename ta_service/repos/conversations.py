@@ -23,6 +23,9 @@ class ConversationRepository:
             "status": "idle",
             "lastReportId": None,
             "currentTaskId": None,
+            "pendingResolution": None,
+            "confirmedStock": None,
+            "confirmedAnalysisPrompt": None,
             "createdAt": now,
             "updatedAt": now,
         }
@@ -68,6 +71,28 @@ class ConversationRepository:
             update["title"] = title
         if status is not None:
             update["status"] = status
+        self.collection.update_one(
+            {"id": conversation_id, "userId": user_id},
+            {"$set": update},
+        )
+
+    def update_resolution_state(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        status: str,
+        pending_resolution: dict | None,
+        confirmed_stock: dict | None = None,
+        confirmed_analysis_prompt: str | None = None,
+    ) -> None:
+        update = {
+            "status": status,
+            "pendingResolution": pending_resolution,
+            "confirmedStock": confirmed_stock,
+            "confirmedAnalysisPrompt": confirmed_analysis_prompt,
+            "updatedAt": _utc_now_iso(),
+        }
         self.collection.update_one(
             {"id": conversation_id, "userId": user_id},
             {"$set": update},

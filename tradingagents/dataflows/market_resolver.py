@@ -27,10 +27,10 @@ def extract_a_share_code(ticker: str) -> str:
     value = normalize_ticker(ticker)
     if re.fullmatch(r"\d{6}", value):
         return value
-    match = re.fullmatch(r"(?:SH|SZ)\.?(\d{6})", value)
+    match = re.fullmatch(r"(?:SH|SZ|BJ)\.?(\d{6})", value)
     if match:
         return match.group(1)
-    match = re.fullmatch(r"(\d{6})\.(?:SH|SZ)", value)
+    match = re.fullmatch(r"(\d{6})\.(?:SH|SZ|BJ)", value)
     if match:
         return match.group(1)
     raise ValueError(f"Unable to extract A-share code from ticker: {ticker}")
@@ -64,7 +64,7 @@ def detect_market(ticker: str) -> str:
     value = normalize_ticker(ticker)
     if re.fullmatch(r"\d{6}", value):
         return MARKET_A_SHARE
-    if re.fullmatch(r"(?:SH|SZ)\.?\d{6}", value) or re.fullmatch(r"\d{6}\.(?:SH|SZ)", value):
+    if re.fullmatch(r"(?:SH|SZ|BJ)\.?\d{6}", value) or re.fullmatch(r"\d{6}\.(?:SH|SZ|BJ)", value):
         return MARKET_A_SHARE
     if (
         re.fullmatch(r"\d{4,5}", value)
@@ -81,7 +81,11 @@ def normalize_symbol_for_vendor(ticker: str, vendor: str, market: str | None = N
 
     if market == MARKET_A_SHARE:
         code = extract_a_share_code(ticker)
-        exchange = infer_a_share_exchange(code)
+        normalized_value = normalize_ticker(ticker)
+        if normalized_value.endswith(".BJ") or normalized_value.startswith("BJ"):
+            exchange = "BJ"
+        else:
+            exchange = infer_a_share_exchange(code)
         if vendor == "futu":
             return f"{exchange}.{code}"
         if vendor == "tushare":

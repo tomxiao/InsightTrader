@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from ta_service.api.deps import get_conversation_service, get_current_user
+from ta_service.api.deps import get_conversation_service, get_current_user, get_resolution_service
 from ta_service.models.auth import MobileUser
 from ta_service.models.conversation import (
     ConversationDetail,
@@ -12,6 +12,8 @@ from ta_service.models.conversation import (
     CreateConversationRequest,
 )
 from ta_service.services.conversation_service import ConversationService
+from ta_service.models.resolution import ResolutionConfirmRequest, ResolutionRequest, ResolutionResponse
+from ta_service.services.resolution_service import ResolutionService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 
@@ -62,4 +64,32 @@ def post_conversation_message(
         user_id=current_user.id,
         conversation_id=conversation_id,
         message=payload.message,
+    )
+
+
+@router.post("/{conversation_id}/resolution", response_model=ResolutionResponse)
+def resolve_conversation_message(
+    conversation_id: str,
+    payload: ResolutionRequest,
+    current_user: MobileUser = Depends(get_current_user),
+    resolution_service: ResolutionService = Depends(get_resolution_service),
+) -> ResolutionResponse:
+    return resolution_service.resolve_message(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        message=payload.message,
+    )
+
+
+@router.post("/{conversation_id}/resolution/confirm", response_model=ResolutionResponse)
+def confirm_conversation_resolution(
+    conversation_id: str,
+    payload: ResolutionConfirmRequest,
+    current_user: MobileUser = Depends(get_current_user),
+    resolution_service: ResolutionService = Depends(get_resolution_service),
+) -> ResolutionResponse:
+    return resolution_service.confirm_resolution(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+        payload=payload,
     )
