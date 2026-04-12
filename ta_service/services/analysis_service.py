@@ -95,7 +95,7 @@ class AnalysisService:
                 detail="Unable to acquire analysis lock for this user",
             )
 
-        document = self.task_repo.create(
+        return self.launch_analysis(
             user_id=user_id,
             conversation_id=payload.conversationId,
             ticker=payload.ticker,
@@ -104,20 +104,41 @@ class AnalysisService:
             selected_analysts=payload.selectedAnalysts,
         )
 
+    def launch_analysis(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        ticker: str,
+        trade_date: str,
+        prompt: str,
+        selected_analysts: list[str] | None = None,
+    ) -> AnalysisTaskStatusResponse:
+        """内部方法：已持锁、已校验状态后直接创建并启动分析任务。"""
+        document = self.task_repo.create(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            ticker=ticker,
+            trade_date=trade_date,
+            prompt=prompt,
+            selected_analysts=selected_analysts or [],
+        )
+
         self.message_repo.create(
-            conversation_id=payload.conversationId,
+            conversation_id=conversation_id,
             role="system",
             message_type="task_status",
             content={"text": "已收到分析请求，正在准备任务"},
         )
+        title = " ".join(prompt.strip().split())[:30] if prompt and prompt.strip() else f"{ticker} 分析"
         self.conversation_repo.update_metadata(
-            conversation_id=payload.conversationId,
+            conversation_id=conversation_id,
             user_id=user_id,
-            title=_build_conversation_title(payload),
+            title=title,
             status="analyzing",
         )
         self.conversation_repo.update_current_task(
-            conversation_id=payload.conversationId,
+            conversation_id=conversation_id,
             user_id=user_id,
             task_id=document["taskId"],
             status="analyzing",
@@ -126,7 +147,7 @@ class AnalysisService:
         if _DEBUG_SKIP_ANALYSIS:
             logger.info(
                 "debug_skip_analysis task_id=%s ticker=%s conversation_id=%s",
-                document["taskId"], payload.ticker, payload.conversationId,
+                document["taskId"], ticker, conversation_id,
             )
             self.queue.release_user_lock(user_id)
             self.task_repo.update_status(
@@ -136,7 +157,7 @@ class AnalysisService:
                 message="[DEV] TA_SERVICE_DEBUG_SKIP_ANALYSIS=true，已跳过 worker 启动",
             )
             self.conversation_repo.update_current_task(
-                conversation_id=payload.conversationId,
+                conversation_id=conversation_id,
                 user_id=user_id,
                 task_id=document["taskId"],
                 status="report_ready",

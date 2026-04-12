@@ -53,6 +53,18 @@ def get_conversation(
     return conversation
 
 
+@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_conversation(
+    conversation_id: str,
+    current_user: MobileUser = Depends(get_current_user),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> None:
+    conversation_service.delete_conversation(
+        user_id=current_user.id,
+        conversation_id=conversation_id,
+    )
+
+
 @router.post("/{conversation_id}/messages", response_model=PostConversationMessageResponse)
 def post_conversation_message(
     conversation_id: str,

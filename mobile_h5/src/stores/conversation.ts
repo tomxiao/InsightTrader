@@ -98,6 +98,10 @@ export const useConversationStore = defineStore('mobile-conversation', {
     setLoading(value: boolean) {
       this.isLoading = value
     },
+    removeConversation(id: string) {
+      this.conversations = this.conversations.filter(item => item.id !== id)
+      storage.set(CONVERSATION_LIST_KEY, this.conversations)
+    },
     resetCurrentConversation() {
       this.currentConversation = { ...emptyConversation }
       storage.remove(CURRENT_CONVERSATION_KEY)

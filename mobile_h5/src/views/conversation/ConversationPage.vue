@@ -28,7 +28,6 @@ const taskStore = useTaskStore()
 const accountMenuOpen = ref(false)
 const logoutLoading = ref(false)
 const resolutionActionLoading = ref(false)
-const analysisLaunchLoading = ref(false)
 const sendingLoading = ref(false)
 
 let pollingTimer: number | null = null
@@ -83,11 +82,7 @@ const placeholderText = computed(() =>
 )
 
 const composerHint = computed(() =>
-  hasRunningTask.value
-    ? '分析进行中，消息会先保留为草稿。'
-    : currentConversation.value.status === 'ready_to_analyze'
-      ? '标的已确认，可以开始正式分析，或继续输入发起新的标的识别。'
-    : ''
+  hasRunningTask.value ? '分析进行中，消息会先保留为草稿。' : ''
 )
 
 const currentConversationStatusLabel = computed(
@@ -144,8 +139,6 @@ const bootstrap = async () => {
   }
 }
 
-const todayTradeDate = () => new Date().toISOString().slice(0, 10)
-
 const isResolutionContent = (content: ConversationMessage['content']): content is ResolutionMessageContent =>
   typeof content === 'object' && content !== null
 
@@ -191,73 +184,32 @@ const activeResolutionId = computed(() => {
   return ''
 })
 
-const latestResolvedResolution = computed(() => {
-  for (let index = currentMessages.value.length - 1; index >= 0; index -= 1) {
-    const content = getResolutionContent(currentMessages.value[index])
-    if (content?.status === 'resolved' && content.ticker && content.analysisPrompt) {
-      return content
-    }
-  }
-  return null
-})
-
-const canLaunchReadyAnalysis = computed(
-  () =>
-    currentConversation.value.status === 'ready_to_analyze' &&
-    !hasRunningTask.value &&
-    Boolean(latestResolvedResolution.value?.ticker) &&
-    !analysisLaunchLoading.value
-)
-
 const canInteractWithResolution = (message: ConversationMessage) => {
   const resolutionId = getResolutionId(message)
   if (!resolutionId) return false
   return resolutionId === activeResolutionId.value && !hasRunningTask.value
 }
 
-const createAnalysisTask = async (ticker: string, prompt: string) => {
-  const task = await analysisApi.createTask({
-    conversationId: currentConversation.value.id,
-    ticker,
-    tradeDate: todayTradeDate(),
-    prompt
-  })
-  taskStore.setTask(task)
-  conversationStore.updateConversationStatus('analyzing', task.taskId, task.reportId)
-  taskStore.setDraftMessage('')
-  await loadConversation(currentConversation.value.id)
-  startPolling()
-}
-
-const startAnalysisFromResolution = async (response: ResolutionResponse) => {
-  if (!response.ticker || response.conversationStatus !== 'ready_to_analyze') return
-  analysisLaunchLoading.value = true
-  try {
-    await createAnalysisTask(response.ticker, response.analysisPrompt || response.promptMessage)
-  } finally {
-    analysisLaunchLoading.value = false
-  }
-}
-
-const launchReadyAnalysis = async () => {
-  const resolved = latestResolvedResolution.value
-  if (!resolved?.ticker) return
-  analysisLaunchLoading.value = true
-  try {
-    await createAnalysisTask(resolved.ticker, resolved.analysisPrompt || resolved.text || '')
-  } catch (error) {
-    showToast((error as Error).message || '发起分析失败，请稍后重试')
-  } finally {
-    analysisLaunchLoading.value = false
-  }
-}
-
 const applyResolutionResponse = async (response: ResolutionResponse) => {
   conversationStore.appendMessages(response.messages)
-  conversationStore.updateConversationStatus(response.conversationStatus)
-  if (response.status === 'resolved' && response.conversationStatus === 'ready_to_analyze') {
-    await startAnalysisFromResolution(response)
+  if (response.conversationStatus === 'analyzing' && response.taskStatus) {
+    taskStore.setTask(response.taskStatus)
+    taskStore.setDraftMessage('')
+    if (response.taskStatus.status === 'completed') {
+      // DEBUG_SKIP_ANALYSIS 场景：后端在同一请求内完成了 analyzing→report_ready，
+      // 直接重新加载会话以获取最新状态（含 report_ready 消息），无需轮询
+      await loadConversation(currentConversation.value.id)
+    } else {
+      conversationStore.updateConversationStatus('analyzing')
+      await loadConversation(currentConversation.value.id)
+      startPolling()
+    }
     return
+  }
+  conversationStore.updateConversationStatus(response.conversationStatus)
+  if (response.conversationStatus === 'ready_to_analyze') {
+    // 后端已识别标的但当前有其他任务正在运行，无法自动启动分析
+    showToast('已识别标的，但当前有分析任务正在进行，请等待完成后重试')
   }
   taskStore.setDraftMessage('')
 }
@@ -346,6 +298,25 @@ const openConversation = async (conversationId: string) => {
     accountMenuOpen.value = false
   } catch (error) {
     showToast((error as Error).message || '加载会话失败')
+  }
+}
+
+const deleteConversation = async (conversationId: string) => {
+  try {
+    await conversationsApi.deleteConversation(conversationId)
+    conversationStore.removeConversation(conversationId)
+    if (currentConversation.value.id === conversationId) {
+      conversationStore.resetCurrentConversation()
+      taskStore.clearTask()
+      const remaining = conversationStore.conversations
+      if (remaining.length > 0) {
+        await loadConversation(remaining[0].id)
+      } else {
+        await createConversation()
+      }
+    }
+  } catch (error) {
+    showToast((error as Error).message || '删除会话失败')
   }
 }
 
@@ -512,18 +483,28 @@ onBeforeUnmount(stopPolling)
           <div class="conversation-drawer__groups">
             <section v-for="[label, items] in groupedConversations" :key="label" class="conversation-drawer__group">
               <h3>{{ label }}</h3>
-              <button
+              <div
                 v-for="item in items"
                 :key="item.id"
                 class="conversation-drawer__item"
                 :class="{ 'is-active': item.id === currentConversation.id }"
                 @click="openConversation(item.id)"
               >
-                <div class="conversation-drawer__item-head">
-                  <strong>{{ item.title }}</strong>
+                <div class="conversation-drawer__item-body">
+                  <div class="conversation-drawer__item-head">
+                    <strong>{{ item.title }}</strong>
+                  </div>
+                  <small>{{ getConversationStatusLabel(item.status) }}</small>
                 </div>
-                <small>{{ getConversationStatusLabel(item.status) }}</small>
-              </button>
+                <button
+                  class="conversation-drawer__item-delete"
+                  type="button"
+                  aria-label="删除会话"
+                  @click.stop="deleteConversation(item.id)"
+                >
+                  <van-icon name="delete-o" />
+                </button>
+              </div>
             </section>
           </div>
 
@@ -701,18 +682,7 @@ onBeforeUnmount(stopPolling)
             <van-button round type="primary" :loading="sendingLoading" @click="submitPrompt">发送</van-button>
           </div>
           <div v-if="composerHint" class="conversation-input__actions">
-            <span class="mobile-subtle">
-              {{ composerHint }}
-            </span>
-            <van-button
-              v-if="canLaunchReadyAnalysis"
-              size="small"
-              type="primary"
-              :loading="analysisLaunchLoading"
-              @click="launchReadyAnalysis"
-            >
-              开始分析
-            </van-button>
+            <span class="mobile-subtle">{{ composerHint }}</span>
           </div>
         </div>
       </div>
@@ -1134,8 +1104,9 @@ onBeforeUnmount(stopPolling)
 
 .conversation-drawer__item {
   display: flex;
-  flex-direction: column;
-  gap: 4px;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
   padding: 12px;
   border: 1px solid var(--mobile-color-border);
   border-radius: 16px;
@@ -1143,11 +1114,20 @@ onBeforeUnmount(stopPolling)
   text-align: left;
   color: var(--mobile-color-text);
   overflow: hidden;
+  cursor: pointer;
 }
 
 .conversation-drawer__item.is-active {
   border-color: var(--mobile-color-primary);
   background: rgba(93, 139, 255, 0.12);
+}
+
+.conversation-drawer__item-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .conversation-drawer__item-head {
@@ -1166,6 +1146,32 @@ onBeforeUnmount(stopPolling)
 .conversation-drawer__item span,
 .conversation-drawer__item small {
   color: var(--mobile-color-text-secondary);
+}
+
+.conversation-drawer__item-delete {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--mobile-color-text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.conversation-drawer__item:hover .conversation-drawer__item-delete,
+.conversation-drawer__item.is-active .conversation-drawer__item-delete {
+  opacity: 1;
+}
+
+.conversation-drawer__item-delete:hover {
+  background: rgba(255, 107, 107, 0.12);
+  color: rgba(255, 107, 107, 0.9);
 }
 
 .conversation-drawer__account {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -88,6 +88,7 @@ class ResolutionResponse(BaseModel):
     messages: list[ConversationMessage] = Field(default_factory=list)
     analysisPrompt: str | None = None
     focusPoints: list[str] = Field(default_factory=list)
+    taskStatus: Any | None = Field(default=None)
 
 
 class AgentResolutionResult(BaseModel):

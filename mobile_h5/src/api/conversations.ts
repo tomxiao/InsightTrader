@@ -33,5 +33,8 @@ export const conversationsApi = {
     return request
       .post<ResolutionResponse>(`/conversations/${conversationId}/resolution/confirm`, payload)
       .then(response => response.data)
+  },
+  deleteConversation(conversationId: string) {
+    return request.delete(`/conversations/${conversationId}`)
   }
 }

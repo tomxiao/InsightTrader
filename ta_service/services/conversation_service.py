@@ -48,6 +48,21 @@ class ConversationService:
         messages = self.message_repo.list_for_conversation(conversation_id)
         return build_conversation_detail(document, messages)
 
+    def delete_conversation(self, *, user_id: str, conversation_id: str) -> None:
+        conversation = self.conversation_repo.get_for_user(
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
+        if not conversation:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+        if conversation.get("status") == "analyzing":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot delete a conversation while analysis is running",
+            )
+        self.conversation_repo.delete(conversation_id=conversation_id, user_id=user_id)
+        self.message_repo.delete_for_conversation(conversation_id=conversation_id)
+
     def post_message(
         self,
         *,

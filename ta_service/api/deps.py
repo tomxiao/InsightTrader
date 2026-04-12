@@ -128,20 +128,6 @@ def get_resolution_agent(
     return ResolutionAgent(stock_lookup_gateway=stock_lookup_gateway)
 
 
-def get_resolution_service(
-    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
-    message_repo: MessageRepository = Depends(get_message_repository),
-    resolution_agent: ResolutionAgent = Depends(get_resolution_agent),
-    stock_lookup_gateway: StockLookupGateway = Depends(get_stock_lookup_gateway),
-) -> ResolutionService:
-    return ResolutionService(
-        conversation_repo=conversation_repo,
-        message_repo=message_repo,
-        resolution_agent=resolution_agent,
-        stock_lookup_gateway=stock_lookup_gateway,
-    )
-
-
 def get_analysis_service(
     task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
@@ -157,6 +143,26 @@ def get_analysis_service(
         report_repo=report_repo,
         queue=queue,
         settings=settings,
+    )
+
+
+def get_resolution_service(
+    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
+    message_repo: MessageRepository = Depends(get_message_repository),
+    resolution_agent: ResolutionAgent = Depends(get_resolution_agent),
+    stock_lookup_gateway: StockLookupGateway = Depends(get_stock_lookup_gateway),
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
+    queue: AnalysisJobQueue = Depends(get_job_queue),
+) -> ResolutionService:
+    return ResolutionService(
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+        resolution_agent=resolution_agent,
+        stock_lookup_gateway=stock_lookup_gateway,
+        analysis_service=analysis_service,
+        task_repo=task_repo,
+        queue=queue,
     )
 
 

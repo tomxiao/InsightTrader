@@ -7,6 +7,7 @@ from uuid import uuid4
 from fastapi import HTTPException, status
 
 from ta_service.contracts.conversations import build_message
+from ta_service.models.analysis import AnalysisTaskStatusResponse
 from ta_service.models.resolution import (
     AgentResolutionResult,
     PendingResolutionSnapshot,
@@ -15,14 +16,19 @@ from ta_service.models.resolution import (
     ResolutionConfirmRequest,
     ResolutionResponse,
 )
+from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
+from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.stock_lookup_gateway import StockLookupError, StockLookupGateway
+from ta_service.workers.queue import AnalysisJobQueue
 
 logger = logging.getLogger(__name__)
 
 MAX_RESOLUTION_ROUNDS = 2
+
+_TODAY = __import__("datetime").date.today
 
 
 class ResolutionService:
@@ -33,11 +39,17 @@ class ResolutionService:
         message_repo: MessageRepository,
         resolution_agent: ResolutionAgent,
         stock_lookup_gateway: StockLookupGateway,
+        analysis_service: AnalysisService,
+        task_repo: AnalysisTaskRepository,
+        queue: AnalysisJobQueue,
     ):
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
         self.resolution_agent = resolution_agent
         self.stock_lookup_gateway = stock_lookup_gateway
+        self.analysis_service = analysis_service
+        self.task_repo = task_repo
+        self.queue = queue
 
     def resolve_message(
         self,
@@ -121,6 +133,18 @@ class ResolutionService:
             len(result.candidates),
         )
 
+        task_status: AnalysisTaskStatusResponse | None = None
+        if result.status == "resolved" and confirmed_stock:
+            ticker = confirmed_stock.get("ticker", "")
+            task_status = self._try_launch_analysis(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                ticker=ticker,
+                prompt=analysis_prompt,
+            )
+            if task_status:
+                conversation_status = "analyzing"
+
         return _build_resolution_response(
             resolution_id=resolution_id,
             result=result,
@@ -128,6 +152,7 @@ class ResolutionService:
             messages=[user_message, assistant_message],
             analysis_prompt=analysis_prompt,
             accepted=None,
+            task_status=task_status,
         )
 
     def confirm_resolution(
@@ -207,6 +232,17 @@ class ResolutionService:
             payload.resolutionId,
             selected_stock.ticker,
         )
+
+        conversation_status = "ready_to_analyze"
+        task_status = self._try_launch_analysis(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            ticker=selected_stock.ticker,
+            prompt=pending.analysisPrompt,
+        )
+        if task_status:
+            conversation_status = "analyzing"
+
         return ResolutionResponse(
             resolutionId=payload.resolutionId,
             accepted=True,
@@ -215,11 +251,55 @@ class ResolutionService:
             name=selected_stock.name,
             candidates=[],
             promptMessage=assistant_reply,
-            conversationStatus="ready_to_analyze",
+            conversationStatus=conversation_status,
             messages=[build_message(assistant_message)],
             analysisPrompt=pending.analysisPrompt,
             focusPoints=list(pending.focusPoints),
+            taskStatus=task_status,
         )
+
+    def _try_launch_analysis(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        ticker: str,
+        prompt: str,
+    ) -> AnalysisTaskStatusResponse | None:
+        """尝试立即启动分析任务，失败时仅记录日志（不阻断 resolution 响应）。"""
+        active_task = self.task_repo.get_active_for_user(user_id)
+        if active_task:
+            logger.warning(
+                "auto_launch_skipped reason=active_task_exists user_id=%s conversation_id=%s",
+                user_id, conversation_id,
+            )
+            return None
+        if not self.queue.acquire_user_lock(user_id):
+            logger.warning(
+                "auto_launch_skipped reason=lock_unavailable user_id=%s conversation_id=%s",
+                user_id, conversation_id,
+            )
+            return None
+        trade_date = _TODAY().strftime("%Y%m%d")
+        try:
+            task_status = self.analysis_service.launch_analysis(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                ticker=ticker,
+                trade_date=trade_date,
+                prompt=prompt,
+            )
+            logger.info(
+                "auto_launch_success conversation_id=%s ticker=%s task_id=%s",
+                conversation_id, ticker, task_status.taskId,
+            )
+            return task_status
+        except Exception as exc:
+            logger.exception(
+                "auto_launch_failed conversation_id=%s ticker=%s error=%s",
+                conversation_id, ticker, exc,
+            )
+            return None
 
     def _get_conversation(self, *, user_id: str, conversation_id: str) -> dict:
         conversation = self.conversation_repo.get_for_user(
@@ -242,11 +322,7 @@ class ResolutionService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conversation has a completed report; use post_message to continue",
             )
-        if conv_status == "ready_to_analyze":
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Stock target is already confirmed; create an analysis task or restart resolution",
-            )
+        # ready_to_analyze: 后端自动启动分析失败时可能停在此状态，允许用户重新触发
 
     def _resolve_selected_stock(
         self,
@@ -288,6 +364,7 @@ def _build_resolution_response(
     messages: list[dict],
     analysis_prompt: str,
     accepted: bool | None,
+    task_status=None,
 ) -> ResolutionResponse:
     return ResolutionResponse(
         resolutionId=resolution_id,
@@ -301,6 +378,7 @@ def _build_resolution_response(
         messages=[build_message(message) for message in messages],
         analysisPrompt=analysis_prompt,
         focusPoints=result.focusPoints,
+        taskStatus=task_status,
     )
 
 

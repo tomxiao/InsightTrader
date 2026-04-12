@@ -76,6 +76,10 @@ class ConversationRepository:
             {"$set": update},
         )
 
+    def delete(self, *, conversation_id: str, user_id: str) -> bool:
+        result = self.collection.delete_one({"id": conversation_id, "userId": user_id})
+        return result.deleted_count > 0
+
     def update_resolution_state(
         self,
         *,

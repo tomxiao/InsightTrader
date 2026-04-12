@@ -14,6 +14,9 @@ class MessageRepository:
     def __init__(self, database):
         self.collection = database[MongoCollections().messages]
 
+    def delete_for_conversation(self, *, conversation_id: str) -> None:
+        self.collection.delete_many({"conversationId": conversation_id})
+
     def list_for_conversation(self, conversation_id: str) -> list[dict]:
         cursor = self.collection.find({"conversationId": conversation_id}, {"_id": 0}).sort(
             "createdAt", 1

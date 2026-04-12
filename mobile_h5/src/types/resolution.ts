@@ -1,3 +1,4 @@
+import type { AnalysisTaskSummary } from '@/types/analysis'
 import type { ConversationMessage, ConversationStatus } from '@/types/conversation'
 
 export type ResolutionStatus =
@@ -54,4 +55,5 @@ export interface ResolutionResponse {
   messages: ConversationMessage[]
   analysisPrompt?: string | null
   focusPoints?: string[]
+  taskStatus?: AnalysisTaskSummary | null
 }
