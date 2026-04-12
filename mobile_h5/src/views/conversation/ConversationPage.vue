@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 import { showToast } from 'vant'
 
 import { analysisApi } from '@api/analysis'
@@ -173,11 +174,27 @@ const getCandidateLabel = (candidate: ResolutionCandidate) =>
   `${candidate.name}（${candidate.ticker}）${candidate.market ? ` · ${candidate.market}` : ''}`
 
 const activeResolutionId = computed(() => {
+  // Collect resolutionIds that already have a follow-up response (settled).
+  // A resolution is settled when any message with the same id carries a status
+  // other than 'need_confirm' / 'need_disambiguation' (e.g. resolved, failed,
+  // unsupported, collect_more), meaning the user already acted on it.
+  const settledIds = new Set<string>()
+  for (const message of currentMessages.value) {
+    const content = getResolutionContent(message)
+    if (!content?.resolutionId) continue
+    if (content.status !== 'need_confirm' && content.status !== 'need_disambiguation') {
+      settledIds.add(content.resolutionId)
+    }
+  }
+
   for (let index = currentMessages.value.length - 1; index >= 0; index -= 1) {
     const message = currentMessages.value[index]
     const content = getResolutionContent(message)
     if (!content?.resolutionId) continue
-    if (content.status === 'need_confirm' || content.status === 'need_disambiguation') {
+    if (
+      (content.status === 'need_confirm' || content.status === 'need_disambiguation') &&
+      !settledIds.has(content.resolutionId)
+    ) {
       return content.resolutionId
     }
   }
@@ -225,7 +242,12 @@ const submitResolutionAction = async (action: ResolutionAction, resolutionId: st
     })
     await applyResolutionResponse(response)
   } catch (error) {
-    showToast((error as Error).message || '操作失败，请稍后再试')
+    if (axios.isAxiosError(error) && error.response?.status === 409) {
+      await loadConversation(currentConversation.value.id)
+      showToast('状态已更新，请根据最新状态操作')
+    } else {
+      showToast((error as Error).message || '操作失败，请稍后再试')
+    }
   } finally {
     resolutionActionLoading.value = false
   }
@@ -285,7 +307,11 @@ const submitPrompt = async () => {
     await applyResolutionResponse(response)
   } catch (error) {
     conversationStore.removeMessageById(thinkingId)
-    showToast((error as Error).message || '发送失败，请稍后再试')
+    if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
+      showToast('识别耗时较长，请下拉刷新查看结果，或重新发送')
+    } else {
+      showToast((error as Error).message || '发送失败，请稍后再试')
+    }
   } finally {
     sendingLoading.value = false
   }

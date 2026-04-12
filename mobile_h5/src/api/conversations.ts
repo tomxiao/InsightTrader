@@ -26,12 +26,12 @@ export const conversationsApi = {
   },
   resolve(conversationId: string, payload: ResolutionRequest) {
     return request
-      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution`, payload)
+      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution`, payload, { timeout: 60000 })
       .then(response => response.data)
   },
   confirmResolution(conversationId: string, payload: ResolutionConfirmRequest) {
     return request
-      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution/confirm`, payload)
+      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution/confirm`, payload, { timeout: 60000 })
       .then(response => response.data)
   },
   deleteConversation(conversationId: string) {
