@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+import os
 from collections.abc import Callable
 
 from fastapi import HTTPException, status
@@ -13,6 +15,10 @@ from ta_service.repos.messages import MessageRepository
 from ta_service.repos.reports import ReportRepository
 from ta_service.workers.launcher import spawn_analysis_task_runner
 from ta_service.workers.queue import AnalysisJobQueue
+
+logger = logging.getLogger(__name__)
+
+_DEBUG_SKIP_ANALYSIS = os.getenv("TA_SERVICE_DEBUG_SKIP_ANALYSIS", "").lower() in ("1", "true", "yes")
 
 
 class AnalysisService:
@@ -116,6 +122,29 @@ class AnalysisService:
             task_id=document["taskId"],
             status="analyzing",
         )
+
+        if _DEBUG_SKIP_ANALYSIS:
+            logger.info(
+                "debug_skip_analysis task_id=%s ticker=%s conversation_id=%s",
+                document["taskId"], payload.ticker, payload.conversationId,
+            )
+            self.queue.release_user_lock(user_id)
+            self.task_repo.update_status(
+                document["taskId"],
+                status="completed",
+                currentStep="[DEV] 已跳过分析",
+                message="[DEV] TA_SERVICE_DEBUG_SKIP_ANALYSIS=true，已跳过 worker 启动",
+            )
+            self.conversation_repo.update_current_task(
+                conversation_id=payload.conversationId,
+                user_id=user_id,
+                task_id=document["taskId"],
+                status="report_ready",
+            )
+            document["status"] = "completed"
+            document["currentStep"] = "[DEV] 已跳过分析"
+            document["message"] = "[DEV] TA_SERVICE_DEBUG_SKIP_ANALYSIS=true，已跳过 worker 启动"
+            return build_analysis_status(document)
 
         try:
             self.task_launcher(document["taskId"])

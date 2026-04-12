@@ -1,0 +1,42 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "后端 ta-service (port 8100)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "ta_service.main:app",
+        "--host", "127.0.0.1",
+        "--port", "8100",
+        "--reload"
+      ],
+      "cwd": "${workspaceFolder}",
+      "envFile": "${workspaceFolder}/.env",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "前端 Vite dev (port 3100)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "${workspaceFolder}/mobile_h5/node_modules/.bin/vite.cmd",
+      "runtimeArgs": ["--port", "3100", "--strictPort"],
+      "cwd": "${workspaceFolder}/mobile_h5",
+      "console": "integratedTerminal",
+      "skipFiles": ["<node_internals>/**"]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "InsightTrader (前端 + 后端)",
+      "configurations": [
+        "后端 ta-service (port 8100)",
+        "前端 Vite dev (port 3100)"
+      ],
+      "stopAll": true
+    }
+  ]
+}

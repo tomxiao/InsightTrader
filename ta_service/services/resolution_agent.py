@@ -35,8 +35,11 @@ _TOOL_SYSTEM_PROMPT = """你是 InsightTrader Mobile 的 F3 Resolution Agent。
 9. 所有面向用户的文案必须使用简体中文，适合移动端消息流。
 
 你可以使用两个工具：
-- search_stock_candidates：根据线索搜索候选股票。
-- get_stock_profile：查询某个 ticker 的标准资料。
+- search_stock_candidates(query, market_hints?, limit?)
+  · query 必须是干净的搜索词：提取出的 ticker、公司名或中文简称，不得包含用户句子中的动词、副词或无关汉字。
+  · 例如：用户说"帮我看一下MU"→ query="MU"；用户说"分析一下英伟达"→ query="英伟达"；用户说"mu.us怎么样"→ query="MU"（去掉 .us/.US 后缀）。
+  · market_hints 仅在能从上下文明确判断市场时传入，如 ["US"]、["HK"]、["CN"]。
+- get_stock_profile(ticker)：查询单个 ticker 的标准资料，用于确认前校验。ticker 必须是标准格式（如 AAPL、00700.HK）。
 
 只有在需要外部股票数据时才调用工具。
 """
@@ -193,7 +196,10 @@ class ResolutionAgent:
 
         @tool
         def search_stock_candidates(query: str, market_hints: list[str] | None = None, limit: int = 5) -> dict:
-            """根据公司名、简称、ticker 或市场提示搜索股票候选。"""
+            """根据干净的搜索词搜索股票候选。
+            query 必须是提取后的 ticker、公司名或中文简称，不能包含原始用户句子中的动词或无关汉字。
+            例如 "帮我看一下MU" → query="MU"；"分析英伟达" → query="英伟达"；"mu.us" → query="MU"。
+            market_hints 可选，如 ["US"]、["HK"]、["CN"]。"""
             try:
                 candidates = gateway.search_stock_candidates(
                     query=query,
@@ -263,9 +269,10 @@ def _invoke_tool_call(
     tool_func = tools_by_name.get(tool_name)
     if tool_func is None:
         return {"error": f"Unknown tool: {tool_name}"}
+    logger.info("resolution_agent_tool_call tool=%s args=%s", tool_name, args)
     result = tool_func.invoke(args)
     logger.info(
-        "resolution_agent_tool tool=%s has_error=%s candidate_count=%s",
+        "resolution_agent_tool_result tool=%s has_error=%s candidate_count=%s",
         tool_name,
         "error" in result,
         len(result.get("candidates", [])) if isinstance(result, dict) else 0,

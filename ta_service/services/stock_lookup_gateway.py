@@ -79,7 +79,13 @@ class StockLookupGateway:
         market_hints: list[str] | None = None,
         limit: int = 5,
     ) -> list[ResolutionCandidate]:
+        # 剥离 .US / .us 后缀（兜底防御，正常由 LLM 在传参前清理）
+        m_us = re.fullmatch(r"([A-Za-z]{1,5})\.[Uu][Ss]", query.strip())
+        if m_us:
+            query = m_us.group(1).upper()
+
         normalized_query = query.strip().lower()
+        logger.info("stock_search_start query=%r market_hints=%s", query, market_hints)
         if not normalized_query:
             return []
 
@@ -93,9 +99,15 @@ class StockLookupGateway:
 
         exact_ticker = self.get_stock_profile(ticker=query)
         if exact_ticker is not None:
+            logger.info("stock_search_exact_hit query=%r ticker=%s", query, exact_ticker.ticker)
             return [exact_ticker.model_copy(update={"score": 1.0})]
 
+        ticker_hint = _normalize_ticker_hint(query)
         markets = _resolve_markets(query=query, market_hints=market_hints)
+        logger.info(
+            "stock_search_catalog query=%r ticker_hint=%r markets=%s",
+            query, ticker_hint, markets,
+        )
         scored: list[tuple[float, ResolutionCandidate]] = []
         errors: list[str] = []
 
@@ -107,7 +119,6 @@ class StockLookupGateway:
                 errors.append(str(exc))
                 continue
 
-            ticker_hint = _normalize_ticker_hint(query)
             for item in catalog:
                 score = _score_candidate(item, normalized_query, ticker_hint)
                 if score <= 0:
@@ -137,7 +148,14 @@ class StockLookupGateway:
                 deduped[candidate.ticker] = candidate
 
         ranked = sorted(deduped.values(), key=lambda candidate: (-(candidate.score or 0), candidate.ticker))
-        return ranked[:limit]
+        result = ranked[:limit]
+        logger.info(
+            "stock_search_done query=%r result_count=%s top=%s",
+            query,
+            len(result),
+            [(r.ticker, r.score) for r in result[:3]],
+        )
+        return result
 
     def get_stock_profile(self, *, ticker: str) -> ResolutionCandidate | None:
         normalized = _normalize_ticker_hint(ticker)
@@ -262,6 +280,10 @@ def _normalize_ticker_hint(value: str) -> str:
     candidate = value.strip().upper()
     if re.fullmatch(r"[A-Z]{1,5}", candidate):
         return candidate
+    # 支持 MU.US / MU.us 格式，剥离 .US 后缀
+    m = re.fullmatch(r"([A-Z]{1,5})\.US", candidate)
+    if m:
+        return m.group(1)
     if re.fullmatch(r"\d{4,5}\.HK", candidate):
         return candidate
     if re.fullmatch(r"\d{6}\.(SZ|SH|BJ)", candidate):

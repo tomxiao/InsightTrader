@@ -65,10 +65,16 @@ class ConversationService:
                 detail="Conversation not found",
             )
 
-        if conversation.get("status") == "analyzing":
+        conv_status = conversation.get("status")
+        if conv_status == "analyzing":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Analysis is still running for this conversation",
+            )
+        if conv_status not in ("report_ready", "report_explaining"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"post_message not allowed in conversation status: {conv_status}",
             )
 
         user_message = self.message_repo.create(

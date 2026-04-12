@@ -29,6 +29,7 @@ const accountMenuOpen = ref(false)
 const logoutLoading = ref(false)
 const resolutionActionLoading = ref(false)
 const analysisLaunchLoading = ref(false)
+const sendingLoading = ref(false)
 
 let pollingTimer: number | null = null
 
@@ -73,7 +74,6 @@ const bannerVisible = computed(() => ['pending', 'running', 'failed'].includes(c
 
 const isFollowupMode = computed(
   () =>
-    Boolean(currentConversation.value.lastReportId) &&
     !hasRunningTask.value &&
     ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
 )
@@ -281,10 +281,7 @@ const submitResolutionAction = async (action: ResolutionAction, resolutionId: st
 
 const submitPrompt = async () => {
   const text = promptModel.value.trim()
-  if (!text) {
-    showToast('请输入内容')
-    return
-  }
+  if (!text || sendingLoading.value) return
 
   if (!currentConversation.value.id) {
     await createConversation()
@@ -296,19 +293,49 @@ const submitPrompt = async () => {
     return
   }
 
+  // 立即清空输入框，并乐观插入用户消息
+  taskStore.setDraftMessage('')
+  sendingLoading.value = true
+
+  const optimisticId = `optimistic-user-${Date.now()}`
+  const thinkingId = `optimistic-thinking-${Date.now()}`
+
+  conversationStore.appendMessages([
+    {
+      id: optimisticId,
+      role: 'user',
+      messageType: 'text',
+      content: text,
+      createdAt: new Date().toISOString(),
+    },
+    {
+      id: thinkingId,
+      role: 'system',
+      messageType: 'text',
+      content: isFollowupMode.value ? '正在处理追问…' : '正在识别标的，请稍候…',
+      createdAt: new Date().toISOString(),
+    },
+  ])
+
   try {
     if (isFollowupMode.value) {
       const response = await conversationsApi.postMessage(currentConversation.value.id, { message: text })
+      conversationStore.removeMessageById(optimisticId)
+      conversationStore.removeMessageById(thinkingId)
       conversationStore.appendMessages(response.messages)
       conversationStore.updateConversationStatus('report_explaining', currentConversation.value.currentTaskId, response.reportId)
-      taskStore.setDraftMessage('')
       return
     }
 
     const response = await conversationsApi.resolve(currentConversation.value.id, { message: text })
+    conversationStore.removeMessageById(optimisticId)
+    conversationStore.removeMessageById(thinkingId)
     await applyResolutionResponse(response)
   } catch (error) {
+    conversationStore.removeMessageById(thinkingId)
     showToast((error as Error).message || '发送失败，请稍后再试')
+  } finally {
+    sendingLoading.value = false
   }
 }
 
@@ -669,8 +696,9 @@ onBeforeUnmount(stopPolling)
               autosize
               type="textarea"
               :placeholder="placeholderText"
+              @keydown.enter.exact.prevent="submitPrompt"
             />
-            <van-button round type="primary" @click="submitPrompt">发送</van-button>
+            <van-button round type="primary" :loading="sendingLoading" @click="submitPrompt">发送</van-button>
           </div>
           <div v-if="composerHint" class="conversation-input__actions">
             <span class="mobile-subtle">

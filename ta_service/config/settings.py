@@ -42,7 +42,7 @@ class Settings:
         origin.strip()
         for origin in os.getenv(
             "TA_SERVICE_CORS_ORIGINS",
-            "http://127.0.0.1:5175,http://localhost:5175",
+            "http://127.0.0.1:3100,http://localhost:3100",
         ).split(",")
         if origin.strip()
     )

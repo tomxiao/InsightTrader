@@ -231,10 +231,21 @@ class ResolutionService:
         return conversation
 
     def _ensure_resolution_allowed(self, conversation: dict) -> None:
-        if conversation.get("status") == "analyzing":
+        conv_status = conversation.get("status")
+        if conv_status == "analyzing":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Analysis is still running for this conversation",
+            )
+        if conv_status in ("report_ready", "report_explaining"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Conversation has a completed report; use post_message to continue",
+            )
+        if conv_status == "ready_to_analyze":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Stock target is already confirmed; create an analysis task or restart resolution",
             )
 
     def _resolve_selected_stock(

@@ -59,6 +59,13 @@ export const useConversationStore = defineStore('mobile-conversation', {
       this.currentConversation.messages.push(...messages)
       storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)
     },
+    removeMessageById(id: string) {
+      const index = this.currentConversation.messages.findIndex(m => m.id === id)
+      if (index >= 0) {
+        this.currentConversation.messages.splice(index, 1)
+        storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)
+      }
+    },
     updateConversationStatus(
       status: ConversationDetail['status'],
       currentTaskId?: string | null,
