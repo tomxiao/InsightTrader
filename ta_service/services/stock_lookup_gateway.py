@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
+from pathlib import Path
 import re
 from threading import Lock
 from typing import Any
@@ -9,6 +11,7 @@ from typing import Any
 import pandas as pd
 
 from ta_service.models.resolution import ResolutionCandidate
+from tradingagents.dataflows.finnhub_common import get_finnhub_client
 from tradingagents.dataflows.market_resolver import (
     MARKET_A_SHARE,
     MARKET_HK,
@@ -19,6 +22,29 @@ from tradingagents.dataflows.market_resolver import (
 from tradingagents.dataflows.tushare_common import get_tushare_pro
 
 logger = logging.getLogger(__name__)
+
+_DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+
+def _load_cn_alias_map() -> dict[str, str]:
+    """加载中文别名字典，返回 {别名.lower(): ticker} 的反向查找表。"""
+    json_path = _DATA_DIR / "us_cn_aliases.json"
+    if not json_path.exists():
+        logger.warning("us_cn_aliases.json not found at %s", json_path)
+        return {}
+    with json_path.open(encoding="utf-8") as f:
+        data: dict[str, list[str]] = json.load(f)
+    reverse: dict[str, str] = {}
+    for ticker, aliases in data.items():
+        for alias in aliases:
+            key = alias.strip().lower()
+            if key:
+                reverse[key] = ticker.upper()
+    logger.debug("cn_alias_map_loaded entries=%s", len(reverse))
+    return reverse
+
+
+_CN_ALIAS_MAP: dict[str, str] = _load_cn_alias_map()
 
 _FIELDS_BY_MARKET = {
     MARKET_A_SHARE: "ts_code,symbol,name,fullname,enname,cnspell,exchange,list_status",
@@ -56,6 +82,14 @@ class StockLookupGateway:
         normalized_query = query.strip().lower()
         if not normalized_query:
             return []
+
+        # 前置拦截：中文别名直接映射到 ticker，跳过全量 catalog 扫描
+        cn_ticker = _CN_ALIAS_MAP.get(normalized_query)
+        if cn_ticker:
+            profile = self.get_stock_profile(ticker=cn_ticker)
+            if profile is not None:
+                logger.info("cn_alias_hit query=%s ticker=%s", query, cn_ticker)
+                return [profile.model_copy(update={"score": 1.0})]
 
         exact_ticker = self.get_stock_profile(ticker=query)
         if exact_ticker is not None:
@@ -135,12 +169,57 @@ class StockLookupGateway:
             if market in self._catalog_cache:
                 return self._catalog_cache[market]
 
-        dataframe = self._load_tushare_catalog(market)
-        entries = [_row_to_candidate(row, market) for _, row in dataframe.iterrows()]
-        entries = [entry for entry in entries if entry is not None]
+        if market == MARKET_US:
+            entries = self._load_finnhub_us_catalog()
+        else:
+            dataframe = self._load_tushare_catalog(market)
+            entries = [_row_to_candidate(row, market) for _, row in dataframe.iterrows()]
+            entries = [entry for entry in entries if entry is not None]
 
         with self._cache_lock:
             self._catalog_cache[market] = entries
+        return entries
+
+    def _load_finnhub_us_catalog(self) -> list[_CatalogEntry]:
+        """加载美股目录（约 3 万条 ticker）。
+
+        优先从 ta_service/data/finnhub_us_basic.csv 读取本地缓存，
+        文件不存在时回退到 Finnhub API 在线拉取。
+        """
+        local_csv = _DATA_DIR / "finnhub_us_basic.csv"
+        if local_csv.exists():
+            logger.info("finnhub_us_catalog_loading_from_csv path=%s", local_csv)
+            df = pd.read_csv(local_csv, dtype=str, keep_default_na=False)
+            symbols: list[dict] = df.to_dict(orient="records")
+        else:
+            logger.info("finnhub_us_catalog_loading_from_api")
+            client = get_finnhub_client()
+            symbols = client.stock_symbols("US")
+
+        entries: list[_CatalogEntry] = []
+        _allowed_types = {"Common Stock", "ETP", "DR", "Preferred Stock", "REIT", ""}
+        for item in symbols:
+            ticker = str(item.get("symbol") or "").strip().upper()
+            name = str(item.get("description") or "").strip()
+            if not ticker or not name:
+                continue
+            asset_type = str(item.get("type") or "").strip()
+            if asset_type and asset_type not in _allowed_types:
+                continue
+            display = str(item.get("displaySymbol") or "").strip().upper()
+            aliases: tuple[str, ...] = (display,) if display and display != ticker else ()
+            entries.append(
+                _CatalogEntry(
+                    ticker=ticker,
+                    name=name,
+                    market=MARKET_US,
+                    exchange=item.get("mic") or None,
+                    aliases=aliases,
+                    is_active=True,
+                )
+            )
+        logger.info("finnhub_us_catalog_loaded source=%s count=%s",
+                    "csv" if local_csv.exists() else "api", len(entries))
         return entries
 
     def _load_tushare_catalog(self, market: str) -> pd.DataFrame:
