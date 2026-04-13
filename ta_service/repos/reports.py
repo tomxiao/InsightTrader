@@ -25,6 +25,7 @@ class ReportRepository:
         summary: str | None,
         executive_summary: str | None,
         content_markdown: str | None,
+        report_dir: str | None,
         trace_dir: str | None,
     ) -> dict:
         document = {
@@ -37,6 +38,7 @@ class ReportRepository:
             "summary": summary,
             "executiveSummary": executive_summary,
             "contentMarkdown": content_markdown,
+            "reportDir": report_dir,
             "traceDir": trace_dir,
             "createdAt": _utc_now_iso(),
         }

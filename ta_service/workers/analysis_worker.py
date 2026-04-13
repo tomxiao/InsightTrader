@@ -116,6 +116,8 @@ class AnalysisTaskRunner:
 
         try:
             result = self.runner.run_analysis(runner_request)
+            report_dir_str = str(result.report_dir) if result.report_dir else None
+            trace_dir_str = str(result.run_context.trace_dir)
             report = self.report_repo.create(
                 task_id=job.taskId,
                 conversation_id=job.conversationId,
@@ -125,7 +127,8 @@ class AnalysisTaskRunner:
                 summary=result.executive_summary,
                 executive_summary=result.executive_summary,
                 content_markdown=result.complete_report_markdown,
-                trace_dir=str(result.run_context.trace_dir),
+                report_dir=report_dir_str,
+                trace_dir=trace_dir_str,
             )
             self.task_repo.update_status(
                 job.taskId,
@@ -137,7 +140,7 @@ class AnalysisTaskRunner:
                 remainingTime=0,
                 reportId=report["id"],
                 runId=result.run_context.run_id,
-                traceDir=str(result.run_context.trace_dir),
+                traceDir=trace_dir_str,
             )
             self.task_event_repo.create(
                 task_id=job.taskId,
@@ -146,7 +149,8 @@ class AnalysisTaskRunner:
                 payload={
                     "reportId": report["id"],
                     "runId": result.run_context.run_id,
-                    "traceDir": str(result.run_context.trace_dir),
+                    "reportDir": report_dir_str,
+                    "traceDir": trace_dir_str,
                 },
             )
             self.state_machine.transition_unchecked(

@@ -31,6 +31,7 @@ class Settings:
     )
 
     results_root: Path = Path(os.getenv("TA_SERVICE_RESULTS_DIR", "./results/ta_service"))
+    reports_root: Path = Path(os.getenv("TA_SERVICE_REPORTS_DIR", "./reports"))
     auth_token_prefix: str = os.getenv("TA_SERVICE_AUTH_TOKEN_PREFIX", "dev-token")
     auth_session_ttl_seconds: int = int(
         os.getenv("TA_SERVICE_AUTH_SESSION_TTL_SECONDS", str(7 * 24 * 60 * 60))

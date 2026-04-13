@@ -6,8 +6,12 @@ import os
 from pathlib import Path
 from typing import Callable
 
-from cli.stats_handler import StatsCallbackHandler
-from ta_service.adapters.result_mapper import build_complete_report_markdown, extract_executive_summary
+from ta_service.callbacks.stats_handler import StatsCallbackHandler
+from ta_service.adapters.result_mapper import (
+    build_complete_report_markdown,
+    extract_executive_summary,
+    save_report_to_disk,
+)
 from ta_service.config.settings import Settings
 from ta_service.runtime.run_context import RunContext, build_run_context
 from ta_service.runtime.status_mapper import resolve_stage_message
@@ -43,6 +47,7 @@ class RunnerResult:
     complete_report_markdown: str
     executive_summary: str | None
     stats: dict
+    report_dir: Path | None = None
 
 
 class TradingAgentsRunner:
@@ -166,12 +171,17 @@ class TradingAgentsRunner:
                 raise RuntimeError("TradingAgents did not produce a final state")
 
             complete_report = build_complete_report_markdown(final_state, payload.ticker)
+            report_dir = save_report_to_disk(
+                final_state,
+                self.settings.reports_root / run_context.trace_dir.name,
+            )
             return RunnerResult(
                 run_context=run_context,
                 final_state=final_state,
                 complete_report_markdown=complete_report,
                 executive_summary=extract_executive_summary(final_state),
                 stats=stats_handler.get_stats(),
+                report_dir=report_dir,
             )
         except Exception as exc:
             stage_tracker.mark_failed(exc)
