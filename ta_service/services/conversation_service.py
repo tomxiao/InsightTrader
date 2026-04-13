@@ -7,14 +7,17 @@ from ta_service.contracts.conversations import (
     build_message,
     build_conversation_summary,
 )
+from ta_service.models.message_types import MessageType
 from ta_service.models.conversation import (
     ConversationDetail,
     ConversationSummary,
     PostConversationMessageResponse,
 )
+from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.repos.reports import ReportRepository
+from ta_service.services.conversation_state_machine import ConversationStateMachine
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.factory import create_llm_client
 
@@ -26,10 +29,14 @@ class ConversationService:
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
         report_repo: ReportRepository,
+        task_repo: AnalysisTaskRepository,
+        state_machine: ConversationStateMachine,
     ):
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
         self.report_repo = report_repo
+        self.task_repo = task_repo
+        self.state_machine = state_machine
 
     def create_conversation(self, *, user_id: str, title: str | None) -> ConversationSummary:
         document = self.conversation_repo.create(user_id=user_id, title=title or "新会话")
@@ -46,7 +53,10 @@ class ConversationService:
         if not document:
             return None
         messages = self.message_repo.list_for_conversation(conversation_id)
-        return build_conversation_detail(document, messages)
+        task_doc: dict | None = None
+        if document.get("status") == "analyzing" and document.get("currentTaskId"):
+            task_doc = self.task_repo.get_by_task_id(document["currentTaskId"])
+        return build_conversation_detail(document, messages, task_doc)
 
     def delete_conversation(self, *, user_id: str, conversation_id: str) -> None:
         conversation = self.conversation_repo.get_for_user(
@@ -95,7 +105,7 @@ class ConversationService:
         user_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="user",
-            message_type="text",
+            message_type=MessageType.TEXT,
             content=message.strip(),
         )
         report = (
@@ -113,13 +123,14 @@ class ConversationService:
         assistant_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="assistant",
-            message_type="text",
+            message_type=MessageType.TEXT,
             content=assistant_text,
         )
-        self.conversation_repo.update_metadata(
+        next_status = "report_explaining" if report else "idle"
+        self.state_machine.transition(
             conversation_id=conversation_id,
             user_id=user_id,
-            status="report_explaining" if report else "idle",
+            to_status=next_status,
         )
         return PostConversationMessageResponse(
             messages=[build_message(user_message), build_message(assistant_message)],
@@ -173,7 +184,7 @@ class ConversationService:
 回答要求：
 1. 使用简体中文。
 2. 优先直接回答用户问题，再给出 2-4 条要点。
-3. 如果报告没有足够信息支撑答案，要明确说明“报告中没有直接给出”，然后给出基于现有内容的最接近结论。
+3. 如果报告没有足够信息支撑答案，要明确说明"报告中没有直接给出"，然后给出基于现有内容的最接近结论。
 4. 不要提及你是模型或引用提示词。
 
 股票：{report.get("stockSymbol", "未知")}

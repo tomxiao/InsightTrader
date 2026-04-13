@@ -6,8 +6,8 @@ from uuid import uuid4
 
 from fastapi import HTTPException, status
 
-from ta_service.contracts.conversations import build_message
-from ta_service.models.analysis import AnalysisTaskStatusResponse
+from ta_service.contracts.conversations import build_message, build_task_progress
+from ta_service.models.message_types import MessageType
 from ta_service.models.resolution import (
     AgentResolutionResult,
     PendingResolutionSnapshot,
@@ -20,6 +20,7 @@ from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.services.analysis_service import AnalysisService
+from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.stock_lookup_gateway import StockLookupError, StockLookupGateway
 from ta_service.workers.queue import AnalysisJobQueue
@@ -42,6 +43,7 @@ class ResolutionService:
         analysis_service: AnalysisService,
         task_repo: AnalysisTaskRepository,
         queue: AnalysisJobQueue,
+        state_machine: ConversationStateMachine,
     ):
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
@@ -50,6 +52,7 @@ class ResolutionService:
         self.analysis_service = analysis_service
         self.task_repo = task_repo
         self.queue = queue
+        self.state_machine = state_machine
 
     def resolve_message(
         self,
@@ -70,7 +73,7 @@ class ResolutionService:
         user_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="user",
-            message_type="text",
+            message_type=MessageType.TEXT,
             content=current_message,
         )
 
@@ -78,7 +81,7 @@ class ResolutionService:
             result = AgentResolutionResult(
                 status="failed",
                 assistantReply=(
-                    "我暂时还无法准确定位你想分析的股票。请直接提供公司全名或标准 ticker，"
+                    "我暂时还无法准确定位你想分析的股票。请直接提供公司全名或股票代码，"
                     "例如 AAPL、0700.HK、300750.SZ。"
                 ),
                 terminate=True,
@@ -97,7 +100,7 @@ class ResolutionService:
         assistant_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="assistant",
-            message_type="ticker_resolution",
+            message_type=MessageType.TICKER_RESOLUTION,
             content=_build_resolution_message_content(
                 resolution_id=resolution_id,
                 result=result,
@@ -116,10 +119,10 @@ class ResolutionService:
         confirmed_analysis_prompt = analysis_prompt if result.status == "resolved" else None
         conversation_status = "ready_to_analyze" if result.status == "resolved" else "collecting_inputs"
 
-        self.conversation_repo.update_resolution_state(
+        self.state_machine.transition(
             conversation_id=conversation_id,
             user_id=user_id,
-            status=conversation_status,
+            to_status=conversation_status,
             pending_resolution=pending_resolution.model_dump(mode="json") if pending_resolution else None,
             confirmed_stock=confirmed_stock,
             confirmed_analysis_prompt=confirmed_analysis_prompt,
@@ -133,17 +136,18 @@ class ResolutionService:
             len(result.candidates),
         )
 
-        task_status: AnalysisTaskStatusResponse | None = None
+        task_progress = None
         if result.status == "resolved" and confirmed_stock:
             ticker = confirmed_stock.get("ticker", "")
-            task_status = self._try_launch_analysis(
+            task_doc = self._try_launch_analysis(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 ticker=ticker,
                 prompt=analysis_prompt,
             )
-            if task_status:
+            if task_doc:
                 conversation_status = "analyzing"
+                task_progress = build_task_progress(task_doc)
 
         return _build_resolution_response(
             resolution_id=resolution_id,
@@ -152,7 +156,7 @@ class ResolutionService:
             messages=[user_message, assistant_message],
             analysis_prompt=analysis_prompt,
             accepted=None,
-            task_status=task_status,
+            task_progress=task_progress,
         )
 
     def confirm_resolution(
@@ -175,7 +179,7 @@ class ResolutionService:
             assistant_message = self.message_repo.create(
                 conversation_id=conversation_id,
                 role="assistant",
-                message_type="ticker_resolution",
+                message_type=MessageType.TICKER_RESOLUTION,
                 content={
                     "text": assistant_reply,
                     "status": "collect_more",
@@ -183,10 +187,10 @@ class ResolutionService:
                     "candidates": [],
                 },
             )
-            self.conversation_repo.update_resolution_state(
+            self.state_machine.transition(
                 conversation_id=conversation_id,
                 user_id=user_id,
-                status="collecting_inputs",
+                to_status="collecting_inputs",
                 pending_resolution=None,
                 confirmed_stock=None,
                 confirmed_analysis_prompt=None,
@@ -206,7 +210,7 @@ class ResolutionService:
         assistant_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="assistant",
-            message_type="ticker_resolution",
+            message_type=MessageType.TICKER_RESOLUTION,
             content={
                 "text": assistant_reply,
                 "status": "resolved",
@@ -218,10 +222,10 @@ class ResolutionService:
                 "focusPoints": pending.focusPoints,
             },
         )
-        self.conversation_repo.update_resolution_state(
+        self.state_machine.transition(
             conversation_id=conversation_id,
             user_id=user_id,
-            status="ready_to_analyze",
+            to_status="ready_to_analyze",
             pending_resolution=None,
             confirmed_stock=selected_stock.model_dump(),
             confirmed_analysis_prompt=pending.analysisPrompt,
@@ -234,14 +238,16 @@ class ResolutionService:
         )
 
         conversation_status = "ready_to_analyze"
-        task_status = self._try_launch_analysis(
+        task_progress = None
+        task_doc = self._try_launch_analysis(
             user_id=user_id,
             conversation_id=conversation_id,
             ticker=selected_stock.ticker,
             prompt=pending.analysisPrompt,
         )
-        if task_status:
+        if task_doc:
             conversation_status = "analyzing"
+            task_progress = build_task_progress(task_doc)
 
         return ResolutionResponse(
             resolutionId=payload.resolutionId,
@@ -255,7 +261,7 @@ class ResolutionService:
             messages=[build_message(assistant_message)],
             analysisPrompt=pending.analysisPrompt,
             focusPoints=list(pending.focusPoints),
-            taskStatus=task_status,
+            taskProgress=task_progress,
         )
 
     def _try_launch_analysis(
@@ -265,8 +271,11 @@ class ResolutionService:
         conversation_id: str,
         ticker: str,
         prompt: str,
-    ) -> AnalysisTaskStatusResponse | None:
-        """尝试立即启动分析任务，失败时仅记录日志（不阻断 resolution 响应）。"""
+    ) -> dict | None:
+        """
+        尝试立即启动分析任务，返回任务文档（含进度字段）。
+        失败时仅记录日志，返回 None，不阻断 resolution 响应。
+        """
         active_task = self.task_repo.get_active_for_user(user_id)
         if active_task:
             logger.warning(
@@ -282,7 +291,7 @@ class ResolutionService:
             return None
         trade_date = _TODAY().strftime("%Y%m%d")
         try:
-            task_status = self.analysis_service.launch_analysis(
+            task_doc = self.analysis_service.launch_analysis(
                 user_id=user_id,
                 conversation_id=conversation_id,
                 ticker=ticker,
@@ -291,9 +300,9 @@ class ResolutionService:
             )
             logger.info(
                 "auto_launch_success conversation_id=%s ticker=%s task_id=%s",
-                conversation_id, ticker, task_status.taskId,
+                conversation_id, ticker, task_doc["taskId"],
             )
-            return task_status
+            return task_doc
         except Exception as exc:
             logger.exception(
                 "auto_launch_failed conversation_id=%s ticker=%s error=%s",
@@ -322,7 +331,6 @@ class ResolutionService:
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Conversation has a completed report; use post_message to continue",
             )
-        # ready_to_analyze: 后端自动启动分析失败时可能停在此状态，允许用户重新触发
 
     def _resolve_selected_stock(
         self,
@@ -364,7 +372,7 @@ def _build_resolution_response(
     messages: list[dict],
     analysis_prompt: str,
     accepted: bool | None,
-    task_status=None,
+    task_progress=None,
 ) -> ResolutionResponse:
     return ResolutionResponse(
         resolutionId=resolution_id,
@@ -378,7 +386,7 @@ def _build_resolution_response(
         messages=[build_message(message) for message in messages],
         analysisPrompt=analysis_prompt,
         focusPoints=result.focusPoints,
-        taskStatus=task_status,
+        taskProgress=task_progress,
     )
 
 
@@ -446,6 +454,10 @@ def _build_prior_summary(pending: PendingResolutionSnapshot | None) -> str:
 
 def _compose_analysis_prompt(*, existing_pending: PendingResolutionSnapshot | None, message: str) -> str:
     if not existing_pending:
+        return message
+
+    # 上一轮 collect_more 说明没有识别出有效标的，历史 prompt 是噪音，不累积
+    if existing_pending.status == "collect_more":
         return message
 
     current_prompt = (existing_pending.analysisPrompt or "").strip()

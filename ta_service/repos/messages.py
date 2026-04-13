@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from uuid import uuid4
 
 from ta_service.db.mongo import MongoCollections
+from ta_service.models.message_types import MessageType
 
 
 def _utc_now_iso() -> str:
@@ -29,7 +30,7 @@ class MessageRepository:
         conversation_id: str,
         role: str,
         content: dict | str,
-        message_type: str = "text",
+        message_type: MessageType = MessageType.TEXT,
     ) -> dict:
         document = {
             "id": str(uuid4()),

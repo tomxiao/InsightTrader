@@ -10,3 +10,4 @@ class ReportDetailResponse(BaseModel):
     summary: str | None = None
     executiveSummary: str | None = None
     contentMarkdown: str | None = None
+    createdAt: str | None = None

@@ -436,12 +436,14 @@ class NodeEventTracker:
         runtime_context_getter=None,
         stall_threshold_s: float = 60.0,
         check_interval_s: float = 5.0,
+        on_node_started=None,
     ) -> None:
         self.config = config or {}
         self.runtime_context = runtime_context or {}
         self.runtime_context_getter = runtime_context_getter
         self.stall_threshold_s = stall_threshold_s
         self.check_interval_s = check_interval_s
+        self.on_node_started = on_node_started
         self.last_progress_at = time.monotonic()
         self.current_node: Optional[Dict[str, Any]] = None
         self._stalled_node_id: Optional[str] = None
@@ -497,6 +499,11 @@ class NodeEventTracker:
             self.last_progress_at = now
             self._stalled_node_id = None
         self._emit("node.started", **payload)
+        if node_kind == "agent" and self.on_node_started is not None:
+            try:
+                self.on_node_started(node_id, stage_id)
+            except Exception:
+                pass
 
     def mark_completed(self) -> None:
         now = time.monotonic()

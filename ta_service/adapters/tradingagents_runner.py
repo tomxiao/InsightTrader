@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import os
 from pathlib import Path
+from typing import Callable
 
 from cli.stats_handler import StatsCallbackHandler
 from ta_service.adapters.result_mapper import build_complete_report_markdown, extract_executive_summary
@@ -31,6 +32,8 @@ class RunnerRequest:
     ticker: str
     trade_date: str
     selected_analysts: list[str]
+    on_stage_change: Callable[[str], None] | None = field(default=None, compare=False, hash=False)
+    on_node_change: Callable[[str, str], None] | None = field(default=None, compare=False, hash=False)
 
 
 @dataclass(frozen=True)
@@ -105,6 +108,8 @@ class TradingAgentsRunner:
             debug=True,
             callbacks=[stats_handler],
         )
+        if payload.on_node_change is not None:
+            graph.node_tracker.on_node_started = payload.on_node_change
         stage_tracker = StageEventTracker(
             config=config,
             runtime_context={
@@ -130,7 +135,21 @@ class TradingAgentsRunner:
 
         final_state: dict | None = None
         selected = payload.selected_analysts or ANALYST_ORDER
+        last_stage_id: str | None = None
+
+        def _notify_stage_change() -> None:
+            nonlocal last_stage_id
+            current = stage_tracker.current_stage_id
+            if current and current != last_stage_id:
+                last_stage_id = current
+                if payload.on_stage_change:
+                    try:
+                        payload.on_stage_change(current)
+                    except Exception:
+                        pass
+
         stage_tracker.sync(self._build_stage_snapshot(selected, {}))
+        _notify_stage_change()
 
         try:
             init_state = graph.propagator.create_initial_state(payload.ticker, payload.trade_date)
@@ -140,6 +159,7 @@ class TradingAgentsRunner:
             for chunk in graph.graph.stream(init_state, **args):
                 accumulated.update({key: value for key, value in chunk.items() if value})
                 stage_tracker.sync(self._build_stage_snapshot(selected, accumulated))
+                _notify_stage_change()
                 final_state = chunk
 
             if final_state is None:

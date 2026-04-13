@@ -6,14 +6,17 @@ import os
 import time
 
 from ta_service.adapters.tradingagents_runner import RunnerRequest, TradingAgentsRunner
+from ta_service.runtime.status_mapper import resolve_node_message, resolve_stage_message
 from ta_service.config.settings import get_settings
 from ta_service.db.mongo import create_mongo_client, get_database
 from ta_service.db.redis import create_redis_client
+from ta_service.models.message_types import MessageType
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.repos.reports import ReportRepository
 from ta_service.repos.task_events import TaskEventRepository
+from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.workers.queue import AnalysisJobQueue
 
 LOGGER = logging.getLogger(__name__)
@@ -31,6 +34,7 @@ class AnalysisTaskRunner:
         self.message_repo = MessageRepository(self.mongo_db)
         self.report_repo = ReportRepository(self.mongo_db)
         self.task_event_repo = TaskEventRepository(self.mongo_db)
+        self.state_machine = ConversationStateMachine(conversation_repo=self.conversation_repo)
         self.runner = TradingAgentsRunner(self.settings)
 
     def close(self) -> None:
@@ -50,10 +54,29 @@ class AnalysisTaskRunner:
 
     def _process_job(self, job) -> None:
         started_at = time.time()
+
+        def on_stage_change(stage_id: str) -> None:
+            label = resolve_stage_message(stage_id) or stage_id
+            elapsed = int(time.time() - started_at)
+            self.task_repo.update_status(
+                job.taskId,
+                stageId=stage_id,
+                currentStep=label,
+                message=label,
+                elapsedTime=elapsed,
+            )
+            self.message_repo.create(
+                conversation_id=job.conversationId,
+                role="system",
+                message_type=MessageType.TASK_STATUS,
+                content={"text": label, "stageId": stage_id},
+            )
+
         runner_request = RunnerRequest(
             ticker=job.ticker,
             trade_date=job.tradeDate,
             selected_analysts=job.selectedAnalysts or ["market", "social", "news", "fundamentals"],
+            on_stage_change=on_stage_change,
         )
         diagnostics = self.runner.build_runtime_diagnostics(runner_request)
         diagnostics["worker"] = {
@@ -84,17 +107,11 @@ class AnalysisTaskRunner:
             stage_id="analysts.market",
             payload=diagnostics,
         )
-        self.conversation_repo.update_current_task(
-            conversation_id=job.conversationId,
-            user_id=job.userId,
-            task_id=job.taskId,
-            status="analyzing",
-        )
         self.message_repo.create(
             conversation_id=job.conversationId,
             role="system",
-            message_type="task_status",
-            content={"text": "已开始执行分析任务"},
+            message_type=MessageType.TASK_STATUS,
+            content={"text": "已开始执行分析任务", "stageId": None},
         )
 
         try:
@@ -132,24 +149,24 @@ class AnalysisTaskRunner:
                     "traceDir": str(result.run_context.trace_dir),
                 },
             )
-            self.conversation_repo.update_current_task(
+            self.state_machine.transition_unchecked(
                 conversation_id=job.conversationId,
                 user_id=job.userId,
+                to_status="report_ready",
                 task_id=job.taskId,
-                status="report_ready",
                 report_id=report["id"],
             )
             self.message_repo.create(
                 conversation_id=job.conversationId,
                 role="assistant",
-                message_type="summary_card",
+                message_type=MessageType.SUMMARY_CARD,
                 content={"text": result.executive_summary or "分析已完成"},
             )
             self.message_repo.create(
                 conversation_id=job.conversationId,
                 role="assistant",
-                message_type="report_card",
-                content={"reportId": report["id"], "title": report["title"]},
+                message_type=MessageType.REPORT_CARD,
+                content={"reportId": report["id"], "title": report["title"], "createdAt": report.get("createdAt")},
             )
         except Exception as exc:
             LOGGER.exception("analysis job failed: %s", job.taskId)
@@ -165,17 +182,17 @@ class AnalysisTaskRunner:
                 event_type="task.failed",
                 payload={"error": str(exc)},
             )
-            self.conversation_repo.update_current_task(
+            self.state_machine.transition_unchecked(
                 conversation_id=job.conversationId,
                 user_id=job.userId,
+                to_status="failed",
                 task_id=job.taskId,
-                status="failed",
             )
             self.message_repo.create(
                 conversation_id=job.conversationId,
                 role="system",
-                message_type="error",
-                content={"text": str(exc)},
+                message_type=MessageType.ERROR,
+                content={"text": "分析未能完成，请稍后重新发起分析请求。"},
             )
         finally:
             self.queue.release_user_lock(job.userId)
@@ -185,7 +202,9 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Run one analysis task and exit.")
     parser.add_argument("--task-id", required=True, help="Analysis task id to process")
     args = parser.parse_args()
-    logging.basicConfig(level=logging.INFO)
+    from ta_service.config.logging_config import setup_logging
+    setup_logging()
+    LOGGER.info("worker process started task_id=%s", args.task_id)
     AnalysisTaskRunner().run_once(args.task_id)
 
 

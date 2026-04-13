@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from ta_service.models.conversation import ConversationMessage
+from ta_service.models.conversation import ConversationMessage, TaskProgress
 
 
 ResolutionStatus = Literal[
@@ -88,7 +88,7 @@ class ResolutionResponse(BaseModel):
     messages: list[ConversationMessage] = Field(default_factory=list)
     analysisPrompt: str | None = None
     focusPoints: list[str] = Field(default_factory=list)
-    taskStatus: Any | None = Field(default=None)
+    taskProgress: TaskProgress | None = None
 
 
 class AgentResolutionResult(BaseModel):

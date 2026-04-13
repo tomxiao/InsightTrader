@@ -1,37 +1,16 @@
-import type { AnalysisTaskSummary } from '@/types/analysis'
-import type { ConversationMessage, ConversationStatus } from '@/types/conversation'
+import type { ConversationMessage, ConversationStatus, TaskProgress } from '@/types/conversation'
+import type {
+  ResolutionCandidate,
+  ResolutionStatus,
+  TickerResolutionContent,
+} from '@/types/messageTypes'
 
-export type ResolutionStatus =
-  | 'collect_more'
-  | 'need_confirm'
-  | 'need_disambiguation'
-  | 'resolved'
-  | 'unsupported'
-  | 'failed'
+export type { ResolutionCandidate, ResolutionStatus }
 
 export type ResolutionAction = 'confirm' | 'select' | 'restart'
 
-export interface ResolutionCandidate {
-  ticker: string
-  name: string
-  market?: string | null
-  exchange?: string | null
-  aliases?: string[]
-  score?: number | null
-  assetType?: string
-  isActive?: boolean | null
-}
-
-export interface ResolutionMessageContent {
-  text?: string
-  status?: ResolutionStatus
-  resolutionId?: string
-  ticker?: string | null
-  name?: string | null
-  candidates?: ResolutionCandidate[]
-  analysisPrompt?: string
-  focusPoints?: string[]
-}
+/** @deprecated 请使用 TickerResolutionContent（来自 @/types/messageTypes） */
+export type ResolutionMessageContent = TickerResolutionContent
 
 export interface ResolutionRequest {
   message: string
@@ -55,5 +34,5 @@ export interface ResolutionResponse {
   messages: ConversationMessage[]
   analysisPrompt?: string | null
   focusPoints?: string[]
-  taskStatus?: AnalysisTaskSummary | null
+  taskProgress?: TaskProgress | null
 }

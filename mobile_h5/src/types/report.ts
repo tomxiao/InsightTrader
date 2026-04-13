@@ -8,4 +8,5 @@ export interface ReportSummary {
 export interface ReportDetail extends ReportSummary {
   executiveSummary?: string
   contentMarkdown?: string
+  createdAt?: string | null
 }

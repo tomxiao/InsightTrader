@@ -12,7 +12,7 @@ const emptyConversation: ConversationDetail = {
   status: 'idle',
   updatedAt: '',
   lastReportId: null,
-  currentTaskId: null,
+  taskProgress: null,
   messages: []
 }
 
@@ -52,7 +52,6 @@ export const useConversationStore = defineStore('mobile-conversation', {
         status: detail.status,
         updatedAt: detail.updatedAt,
         lastReportId: detail.lastReportId,
-        currentTaskId: detail.currentTaskId
       })
     },
     appendMessages(messages: ConversationMessage[]) {
@@ -66,18 +65,8 @@ export const useConversationStore = defineStore('mobile-conversation', {
         storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)
       }
     },
-    updateConversationStatus(
-      status: ConversationDetail['status'],
-      currentTaskId?: string | null,
-      lastReportId?: string | null
-    ) {
+    updateConversationStatus(status: ConversationDetail['status']) {
       this.currentConversation.status = status
-      if (typeof currentTaskId !== 'undefined') {
-        this.currentConversation.currentTaskId = currentTaskId
-      }
-      if (typeof lastReportId !== 'undefined') {
-        this.currentConversation.lastReportId = lastReportId
-      }
       this.currentConversation.updatedAt = new Date().toISOString()
       if (this.currentConversation.id) {
         this.upsertConversation({
@@ -86,7 +75,6 @@ export const useConversationStore = defineStore('mobile-conversation', {
           status: this.currentConversation.status,
           updatedAt: this.currentConversation.updatedAt,
           lastReportId: this.currentConversation.lastReportId,
-          currentTaskId: this.currentConversation.currentTaskId
         })
       }
       storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)

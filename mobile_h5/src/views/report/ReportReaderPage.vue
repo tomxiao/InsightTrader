@@ -6,7 +6,6 @@ import { showToast } from 'vant'
 
 import { reportsApi } from '@api/reports'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
-import ReportEntryCard from '@components/report/ReportEntryCard.vue'
 import type { ReportDetail } from '@/types/report'
 
 const route = useRoute()
@@ -17,6 +16,7 @@ const report = ref<ReportDetail | null>(null)
 const htmlContent = computed(
   () => marked.parse(report.value?.contentMarkdown || '', { async: false }) as string
 )
+
 
 const loadReport = async () => {
   const reportId = String(route.params.id || '')
@@ -40,10 +40,7 @@ onMounted(loadReport)
     <template #header>
       <div class="report-page__header">
         <van-button plain size="small" @click="router.back()">返回</van-button>
-        <div class="report-page__header-main">
-          <strong>完整报告</strong>
-          <span class="mobile-subtle">沉浸阅读</span>
-        </div>
+        <strong class="report-page__header-title">完整报告</strong>
         <span />
       </div>
     </template>
@@ -51,29 +48,14 @@ onMounted(loadReport)
     <div class="report-page">
       <van-skeleton v-if="loading" title :row="8" />
       <template v-else-if="report">
-        <ReportEntryCard
-          :title="report.title || `${report.stockSymbol} 分析报告`"
-          :description="`标的：${report.stockSymbol}`"
-        >
-          <div v-if="report.executiveSummary" class="report-page__summary">
-            <h3>核心摘要</h3>
-            <p>{{ report.executiveSummary }}</p>
-          </div>
-        </ReportEntryCard>
-
         <section class="mobile-card report-page__markdown">
-          <div class="report-page__markdown-head">
-            <strong>全文</strong>
-            <span class="mobile-subtle">向下滚动阅读完整分析</span>
-          </div>
           <div v-html="htmlContent" />
         </section>
       </template>
-      <ReportEntryCard
-        v-else
-        title="报告暂不可用"
-        description="当前没有可展示的报告内容，请返回会话页重新打开相关分析。"
-      />
+      <div v-else class="report-page__empty">
+        <p>报告暂不可用</p>
+        <p class="mobile-subtle">当前没有可展示的报告内容，请返回会话页重新打开相关分析。</p>
+      </div>
     </div>
   </MobilePageLayout>
 </template>
@@ -86,37 +68,21 @@ onMounted(loadReport)
 }
 
 .report-page__header {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--mobile-space-md);
 }
 
-.report-page__header-main {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+.report-page__header-title {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 16px;
+  pointer-events: none;
 }
 
-.report-page__summary h3,
-.report-page__summary p {
-  margin: 0;
-}
-
-.report-page__summary {
-  margin-top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.report-page__markdown-head {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-bottom: 18px;
-}
 
 .report-page__markdown {
   line-height: 1.8;
@@ -141,5 +107,16 @@ onMounted(loadReport)
 
 .report-page__markdown :deep(strong) {
   color: var(--mobile-color-text);
+}
+
+.report-page__empty {
+  padding: var(--mobile-space-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-page__empty p {
+  margin: 0;
 }
 </style>

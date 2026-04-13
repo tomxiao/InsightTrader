@@ -9,10 +9,12 @@ from fastapi import HTTPException, status
 from ta_service.config.settings import Settings
 from ta_service.contracts.analysis import build_analysis_status
 from ta_service.models.analysis import AnalysisTaskStatusResponse, CreateAnalysisTaskRequest
+from ta_service.models.message_types import MessageType
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.repos.reports import ReportRepository
+from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.workers.launcher import spawn_analysis_task_runner
 from ta_service.workers.queue import AnalysisJobQueue
 
@@ -31,6 +33,7 @@ class AnalysisService:
         report_repo: ReportRepository,
         queue: AnalysisJobQueue,
         settings: Settings,
+        state_machine: ConversationStateMachine,
         task_launcher: Callable[[str], object] = spawn_analysis_task_runner,
     ):
         self.task_repo = task_repo
@@ -39,6 +42,7 @@ class AnalysisService:
         self.report_repo = report_repo
         self.queue = queue
         self.settings = settings
+        self.state_machine = state_machine
         self.task_launcher = task_launcher
 
     def get_task_status(self, *, task_id: str, user_id: str) -> AnalysisTaskStatusResponse | None:
@@ -95,7 +99,7 @@ class AnalysisService:
                 detail="Unable to acquire analysis lock for this user",
             )
 
-        return self.launch_analysis(
+        task_doc = self.launch_analysis(
             user_id=user_id,
             conversation_id=payload.conversationId,
             ticker=payload.ticker,
@@ -103,6 +107,7 @@ class AnalysisService:
             prompt=payload.prompt,
             selected_analysts=payload.selectedAnalysts,
         )
+        return build_analysis_status(task_doc)
 
     def launch_analysis(
         self,
@@ -113,8 +118,11 @@ class AnalysisService:
         trade_date: str,
         prompt: str,
         selected_analysts: list[str] | None = None,
-    ) -> AnalysisTaskStatusResponse:
-        """内部方法：已持锁、已校验状态后直接创建并启动分析任务。"""
+    ) -> dict:
+        """
+        内部方法：已持锁、已校验状态后直接创建并启动分析任务。
+        返回任务文档 dict，调用方可从中取进度字段。
+        """
         document = self.task_repo.create(
             user_id=user_id,
             conversation_id=conversation_id,
@@ -127,21 +135,17 @@ class AnalysisService:
         self.message_repo.create(
             conversation_id=conversation_id,
             role="system",
-            message_type="task_status",
-            content={"text": "已收到分析请求，正在准备任务"},
+            message_type=MessageType.TASK_STATUS,
+            content={"text": "已收到分析请求，正在准备任务", "stageId": None},
         )
         title = " ".join(prompt.strip().split())[:30] if prompt and prompt.strip() else f"{ticker} 分析"
-        self.conversation_repo.update_metadata(
+
+        self.state_machine.transition(
             conversation_id=conversation_id,
             user_id=user_id,
+            to_status="analyzing",
             title=title,
-            status="analyzing",
-        )
-        self.conversation_repo.update_current_task(
-            conversation_id=conversation_id,
-            user_id=user_id,
             task_id=document["taskId"],
-            status="analyzing",
         )
 
         if _DEBUG_SKIP_ANALYSIS:
@@ -156,16 +160,16 @@ class AnalysisService:
                 currentStep="[DEV] 已跳过分析",
                 message="[DEV] TA_SERVICE_DEBUG_SKIP_ANALYSIS=true，已跳过 worker 启动",
             )
-            self.conversation_repo.update_current_task(
+            self.state_machine.transition_unchecked(
                 conversation_id=conversation_id,
                 user_id=user_id,
+                to_status="report_ready",
                 task_id=document["taskId"],
-                status="report_ready",
             )
             document["status"] = "completed"
             document["currentStep"] = "[DEV] 已跳过分析"
             document["message"] = "[DEV] TA_SERVICE_DEBUG_SKIP_ANALYSIS=true，已跳过 worker 启动"
-            return build_analysis_status(document)
+            return document
 
         try:
             self.task_launcher(document["taskId"])
@@ -190,11 +194,4 @@ class AnalysisService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to launch analysis task runner",
             ) from exc
-        return build_analysis_status(document)
-
-
-def _build_conversation_title(payload: CreateAnalysisTaskRequest) -> str:
-    if payload.prompt and payload.prompt.strip():
-        collapsed = " ".join(payload.prompt.strip().split())
-        return collapsed[:30]
-    return f"{payload.ticker} 分析"
+        return document

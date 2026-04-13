@@ -14,6 +14,7 @@ from ta_service.repos.users import UserRepository
 from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.auth_service import AuthService
 from ta_service.services.conversation_service import ConversationService
+from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.resolution_service import ResolutionService
 from ta_service.services.report_service import ReportService
@@ -106,15 +107,25 @@ def require_admin(current_user: MobileUser = Depends(get_current_user)) -> Mobil
     return current_user
 
 
+def get_state_machine(
+    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
+) -> ConversationStateMachine:
+    return ConversationStateMachine(conversation_repo=conversation_repo)
+
+
 def get_conversation_service(
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
     report_repo: ReportRepository = Depends(get_report_repository),
+    task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
+    state_machine: ConversationStateMachine = Depends(get_state_machine),
 ) -> ConversationService:
     return ConversationService(
         conversation_repo=conversation_repo,
         message_repo=message_repo,
         report_repo=report_repo,
+        task_repo=task_repo,
+        state_machine=state_machine,
     )
 
 
@@ -135,6 +146,7 @@ def get_analysis_service(
     report_repo: ReportRepository = Depends(get_report_repository),
     queue: AnalysisJobQueue = Depends(get_job_queue),
     settings: Settings = Depends(get_settings_dependency),
+    state_machine: ConversationStateMachine = Depends(get_state_machine),
 ) -> AnalysisService:
     return AnalysisService(
         task_repo=task_repo,
@@ -143,6 +155,7 @@ def get_analysis_service(
         report_repo=report_repo,
         queue=queue,
         settings=settings,
+        state_machine=state_machine,
     )
 
 
@@ -154,6 +167,7 @@ def get_resolution_service(
     analysis_service: AnalysisService = Depends(get_analysis_service),
     task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
     queue: AnalysisJobQueue = Depends(get_job_queue),
+    state_machine: ConversationStateMachine = Depends(get_state_machine),
 ) -> ResolutionService:
     return ResolutionService(
         conversation_repo=conversation_repo,
@@ -163,6 +177,7 @@ def get_resolution_service(
         analysis_service=analysis_service,
         task_repo=task_repo,
         queue=queue,
+        state_machine=state_machine,
     )
 
 

@@ -1,3 +1,14 @@
+import type {
+  MessageType,
+  TaskStatusContent,
+  ErrorContent,
+  SummaryCardContent,
+  ReportCardContent,
+  TickerResolutionContent,
+} from '@/types/messageTypes'
+
+export type { MessageType }
+
 export type ConversationStatus =
   | 'idle'
   | 'collecting_inputs'
@@ -7,13 +18,15 @@ export type ConversationStatus =
   | 'report_explaining'
   | 'failed'
 
-export type ConversationMessageType =
-  | 'text'
-  | 'task_status'
-  | 'summary_card'
-  | 'report_card'
-  | 'ticker_resolution'
-  | 'error'
+/** @deprecated 请使用 MessageType（来自 @/types/messageTypes） */
+export type ConversationMessageType = MessageType
+
+export interface TaskProgress {
+  currentStep?: string
+  message?: string
+  elapsedTime?: number
+  remainingTime?: number
+}
 
 export interface ConversationSummary {
   id: string
@@ -21,41 +34,25 @@ export interface ConversationSummary {
   status: ConversationStatus
   updatedAt: string
   lastReportId?: string | null
-  currentTaskId?: string | null
 }
 
 export interface ConversationMessage {
   id: string
   role: 'user' | 'assistant' | 'system'
-  messageType: ConversationMessageType
+  messageType: MessageType
   content:
     | string
-    | {
-        text?: string
-        reportId?: string
-        title?: string
-        status?: string
-        resolutionId?: string
-        ticker?: string | null
-        name?: string | null
-        candidates?: Array<{
-          ticker: string
-          name: string
-          market?: string | null
-          exchange?: string | null
-          aliases?: string[]
-          score?: number | null
-          assetType?: string
-          isActive?: boolean | null
-        }>
-        analysisPrompt?: string
-        focusPoints?: string[]
-      }
+    | TaskStatusContent
+    | ErrorContent
+    | SummaryCardContent
+    | ReportCardContent
+    | TickerResolutionContent
   createdAt: string
 }
 
 export interface ConversationDetail extends ConversationSummary {
   messages: ConversationMessage[]
+  taskProgress?: TaskProgress | null
 }
 
 export interface CreateConversationRequest {

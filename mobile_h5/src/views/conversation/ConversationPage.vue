@@ -1,47 +1,45 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
+import { marked } from 'marked'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
 import { showToast } from 'vant'
 
-import { analysisApi } from '@api/analysis'
 import { authApi } from '@api/auth'
 import { conversationsApi } from '@api/conversations'
-import TaskStatusBanner from '@components/conversation/TaskStatusBanner.vue'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
+import { useConversationPolling } from '@composables/useConversationPolling'
+import { useDrawerPolling } from '@composables/useDrawerPolling'
 import { useAuthStore } from '@stores/auth'
 import { useConversationStore } from '@stores/conversation'
-import { useTaskStore } from '@stores/task'
 import type { ConversationMessage, ConversationSummary } from '@/types/conversation'
+import {
+  MessageType,
+  isReportCardContent,
+  isTickerResolutionContent,
+} from '@/types/messageTypes'
 import type {
   ResolutionAction,
   ResolutionCandidate,
-  ResolutionMessageContent,
   ResolutionResponse,
-  ResolutionStatus
+  ResolutionStatus,
 } from '@/types/resolution'
-import { formatConversationGroup, formatTimeLabel } from '@utils/format'
+import { formatConversationGroup, formatSeconds, formatTimeLabel } from '@utils/format'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const conversationStore = useConversationStore()
-const taskStore = useTaskStore()
 const accountMenuOpen = ref(false)
 const logoutLoading = ref(false)
 const resolutionActionLoading = ref(false)
 const sendingLoading = ref(false)
 
-let pollingTimer: number | null = null
-
-const promptModel = computed({
-  get: () => taskStore.draftMessage,
-  set: value => taskStore.setDraftMessage(value)
-})
+const promptModel = ref('')
 
 const currentConversation = computed(() => conversationStore.currentConversation)
 const currentMessages = computed(() => conversationStore.currentMessages)
-const currentTask = computed(() => taskStore.currentTask)
-const hasRunningTask = computed(() => taskStore.hasRunningTask)
+const isAnalyzing = computed(() => currentConversation.value.status === 'analyzing')
+const taskProgress = computed(() => currentConversation.value.taskProgress ?? null)
 
 const groupedConversations = computed(() => {
   const groups = new Map<string, ConversationSummary[]>()
@@ -55,9 +53,9 @@ const groupedConversations = computed(() => {
 })
 
 const suggestedPrompts = [
-  '分析宁德时代，重点看长期持有风险',
-  '查看腾讯控股最新报告',
-  '分析苹果，重点关注估值与催化'
+  '分析宁德时代',
+  '研究腾讯控股最新趋势',
+  '帮我看下Apple'
 ]
 
 const conversationStatusLabelMap: Record<ConversationSummary['status'], string> = {
@@ -70,21 +68,21 @@ const conversationStatusLabelMap: Record<ConversationSummary['status'], string> 
   failed: '需要重试'
 }
 
-const bannerVisible = computed(() => ['pending', 'running', 'failed'].includes(currentTask.value.status))
+const latestTaskStatusId = computed(() => {
+  if (!isAnalyzing.value) return null
+  const messages = currentMessages.value
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].messageType === MessageType.TASK_STATUS) {
+      return messages[i].id
+    }
+  }
+  return null
+})
 
-const isFollowupMode = computed(
-  () =>
-    !hasRunningTask.value &&
-    ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
+const isFollowupMode = computed(() =>
+  ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
 )
 
-const placeholderText = computed(() =>
-  hasRunningTask.value ? '分析仍在进行中，你的新问题会先保留为草稿' : '问一只股票、一个观点，或继续追问'
-)
-
-const composerHint = computed(() =>
-  hasRunningTask.value ? '分析进行中，消息会先保留为草稿。' : ''
-)
 
 const currentConversationStatusLabel = computed(
   () => conversationStatusLabelMap[currentConversation.value.status] || '待开始'
@@ -96,16 +94,6 @@ const accountInitial = computed(() => accountDisplayName.value.trim().charAt(0).
 const loadConversation = async (conversationId: string) => {
   const detail = await conversationsApi.getConversation(conversationId)
   conversationStore.setCurrentConversation(detail)
-  if (detail.currentTaskId) {
-    try {
-      const status = await analysisApi.getTaskStatus(detail.currentTaskId)
-      taskStore.setTask(status)
-    } catch {
-      // ignore stale task references
-    }
-  } else if (taskStore.currentTask.status === 'completed' || taskStore.currentTask.status === 'failed') {
-    taskStore.clearTask()
-  }
 }
 
 const createConversation = async () => {
@@ -140,11 +128,8 @@ const bootstrap = async () => {
   }
 }
 
-const isResolutionContent = (content: ConversationMessage['content']): content is ResolutionMessageContent =>
-  typeof content === 'object' && content !== null
-
-const getResolutionContent = (message: ConversationMessage): ResolutionMessageContent | null =>
-  message.messageType === 'ticker_resolution' && isResolutionContent(message.content) ? message.content : null
+const getResolutionContent = (message: ConversationMessage) =>
+  isTickerResolutionContent(message.messageType, message.content) ? message.content : null
 
 const getResolutionStatus = (message: ConversationMessage): ResolutionStatus | '' =>
   getResolutionContent(message)?.status || ''
@@ -204,31 +189,16 @@ const activeResolutionId = computed(() => {
 const canInteractWithResolution = (message: ConversationMessage) => {
   const resolutionId = getResolutionId(message)
   if (!resolutionId) return false
-  return resolutionId === activeResolutionId.value && !hasRunningTask.value
+  return resolutionId === activeResolutionId.value && !isAnalyzing.value
 }
 
 const applyResolutionResponse = async (response: ResolutionResponse) => {
   conversationStore.appendMessages(response.messages)
-  if (response.conversationStatus === 'analyzing' && response.taskStatus) {
-    taskStore.setTask(response.taskStatus)
-    taskStore.setDraftMessage('')
-    if (response.taskStatus.status === 'completed') {
-      // DEBUG_SKIP_ANALYSIS 场景：后端在同一请求内完成了 analyzing→report_ready，
-      // 直接重新加载会话以获取最新状态（含 report_ready 消息），无需轮询
-      await loadConversation(currentConversation.value.id)
-    } else {
-      conversationStore.updateConversationStatus('analyzing')
-      await loadConversation(currentConversation.value.id)
-      startPolling()
-    }
-    return
-  }
-  conversationStore.updateConversationStatus(response.conversationStatus)
+  // 重新加载会话以获取最新状态，taskProgress 由后端填充在 ConversationDetail 中
+  await loadConversation(currentConversation.value.id)
   if (response.conversationStatus === 'ready_to_analyze') {
-    // 后端已识别标的但当前有其他任务正在运行，无法自动启动分析
     showToast('已识别标的，但当前有分析任务正在进行，请等待完成后重试')
   }
-  taskStore.setDraftMessage('')
 }
 
 const submitResolutionAction = async (action: ResolutionAction, resolutionId: string, ticker?: string) => {
@@ -261,15 +231,10 @@ const submitPrompt = async () => {
     await createConversation()
   }
 
-  if (hasRunningTask.value) {
-    taskStore.setDraftMessage(text)
-    showToast('当前分析尚未完成，已为你保留草稿')
-    return
-  }
+  if (isAnalyzing.value) return
 
-  // 立即清空输入框，并乐观插入用户消息
-  taskStore.setDraftMessage('')
   sendingLoading.value = true
+  promptModel.value = ''
 
   const optimisticId = `optimistic-user-${Date.now()}`
   const thinkingId = `optimistic-thinking-${Date.now()}`
@@ -278,14 +243,14 @@ const submitPrompt = async () => {
     {
       id: optimisticId,
       role: 'user',
-      messageType: 'text',
+      messageType: MessageType.TEXT,
       content: text,
       createdAt: new Date().toISOString(),
     },
     {
       id: thinkingId,
       role: 'system',
-      messageType: 'text',
+      messageType: MessageType.TEXT,
       content: isFollowupMode.value ? '正在处理追问…' : '正在识别标的，请稍候…',
       createdAt: new Date().toISOString(),
     },
@@ -297,7 +262,7 @@ const submitPrompt = async () => {
       conversationStore.removeMessageById(optimisticId)
       conversationStore.removeMessageById(thinkingId)
       conversationStore.appendMessages(response.messages)
-      conversationStore.updateConversationStatus('report_explaining', currentConversation.value.currentTaskId, response.reportId)
+      conversationStore.updateConversationStatus('report_explaining')
       return
     }
 
@@ -306,6 +271,7 @@ const submitPrompt = async () => {
     conversationStore.removeMessageById(thinkingId)
     await applyResolutionResponse(response)
   } catch (error) {
+    conversationStore.removeMessageById(optimisticId)
     conversationStore.removeMessageById(thinkingId)
     if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
       showToast('识别耗时较长，请下拉刷新查看结果，或重新发送')
@@ -333,7 +299,6 @@ const deleteConversation = async (conversationId: string) => {
     conversationStore.removeConversation(conversationId)
     if (currentConversation.value.id === conversationId) {
       conversationStore.resetCurrentConversation()
-      taskStore.clearTask()
       const remaining = conversationStore.conversations
       if (remaining.length > 0) {
         await loadConversation(remaining[0].id)
@@ -350,8 +315,6 @@ const clearLocalState = () => {
   conversationStore.setConversations([])
   conversationStore.resetCurrentConversation()
   conversationStore.setDrawerOpen(false)
-  taskStore.clearTask()
-  taskStore.setDraftMessage('')
   authStore.clearAuth()
 }
 
@@ -375,43 +338,9 @@ const closeDrawer = () => {
   accountMenuOpen.value = false
 }
 
-const stopPolling = () => {
-  if (pollingTimer) {
-    window.clearInterval(pollingTimer)
-    pollingTimer = null
-  }
-}
+useConversationPolling(() => currentConversation.value.id)
 
-const pollTask = async () => {
-  if (!taskStore.currentTask.taskId) return
-
-  try {
-    const status = await analysisApi.getTaskStatus(taskStore.currentTask.taskId)
-    taskStore.setTask(status)
-    conversationStore.updateConversationStatus(
-      status.status === 'completed'
-        ? 'report_ready'
-        : status.status === 'failed'
-          ? 'failed'
-          : 'analyzing',
-      status.taskId,
-      status.reportId
-    )
-
-    if (status.status === 'completed' || status.status === 'failed') {
-      stopPolling()
-      await loadConversation(currentConversation.value.id)
-    }
-  } catch {
-    stopPolling()
-  }
-}
-
-const startPolling = () => {
-  stopPolling()
-  if (!taskStore.currentTask.taskId) return
-  pollingTimer = window.setInterval(pollTask, 3000)
-}
+useDrawerPolling()
 
 const quickFill = (prompt: string) => {
   promptModel.value = prompt
@@ -421,30 +350,52 @@ const getConversationStatusLabel = (status: ConversationSummary['status']) =>
   conversationStatusLabelMap[status] || '处理中'
 
 const getMessageText = (message: ConversationMessage) => {
-  if (typeof message.content === 'string') {
-    return message.content
-  }
-  return message.content.text || ''
+  if (typeof message.content === 'string') return message.content
+  return 'text' in message.content ? (message.content.text ?? '') : ''
 }
 
 const getReportCardId = (message: ConversationMessage) =>
-  typeof message.content === 'string' ? '' : message.content.reportId || ''
+  isReportCardContent(message.messageType, message.content) ? message.content.reportId : ''
 
 const getReportCardTitle = (message: ConversationMessage) =>
-  typeof message.content === 'string' ? '查看完整报告' : message.content.title || '查看完整报告'
+  isReportCardContent(message.messageType, message.content)
+    ? (message.content.title || '查看完整报告')
+    : '查看完整报告'
 
-watch(
-  () => taskStore.currentTask.status,
-  status => {
-    if (status === 'pending' || status === 'running') {
-      startPolling()
-    }
-    if (status === 'completed' || status === 'failed' || status === 'idle') {
-      stopPolling()
-    }
-  },
-  { immediate: true }
-)
+const getReportCardCreatedAt = (message: ConversationMessage) =>
+  isReportCardContent(message.messageType, message.content)
+    ? (message.content.createdAt ?? null)
+    : null
+
+const formatDateTime = (iso: string | null | undefined): string => {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+const expandedSummaries = ref(new Set<string>())
+
+const isSummaryExpanded = (id: string) => expandedSummaries.value.has(id)
+
+const toggleSummary = (id: string) => {
+  const next = new Set(expandedSummaries.value)
+  if (next.has(id)) {
+    next.delete(id)
+  } else {
+    next.add(id)
+  }
+  expandedSummaries.value = next
+}
+
+const getSummaryPreview = (text: string) => {
+  const first = text.split(/\n\n+/)[0] ?? text
+  return first.trim()
+}
+
+const renderMarkdown = (text: string): string =>
+  marked.parse(text, { async: false }) as string
 
 watch(
   () => conversationStore.isDrawerOpen,
@@ -456,7 +407,6 @@ watch(
 )
 
 onMounted(bootstrap)
-onBeforeUnmount(stopPolling)
 </script>
 
 <template>
@@ -473,15 +423,6 @@ onBeforeUnmount(stopPolling)
       </div>
     </template>
 
-    <template v-if="bannerVisible" #banner>
-      <TaskStatusBanner
-        :status="currentTask.status"
-        :title="currentTask.currentStep || '任务状态'"
-        :detail="currentTask.message || '分析正在处理中，请稍候'"
-        :elapsed-time="currentTask.elapsedTime"
-        :remaining-time="currentTask.remainingTime"
-      />
-    </template>
 
     <div class="conversation-page">
       <van-popup
@@ -566,9 +507,8 @@ onBeforeUnmount(stopPolling)
         <van-pull-refresh v-model="conversationStore.isLoading" @refresh="bootstrap">
           <div v-if="!currentMessages.length" class="conversation-empty">
             <div class="conversation-empty__hero">
-              <p class="conversation-empty__eyebrow">InsightTrader Mobile</p>
-              <h2>今晚想研究什么？</h2>
-              <p class="mobile-muted">用自然语言输入股票、公司或观点。我会先确认分析标的，再进入正式分析流程。</p>
+              <h2>今天想研究什么？</h2>
+              <p class="mobile-muted">输入股票、公司信息，我会给出详尽的分析报告。</p>
             </div>
             <div class="conversation-empty__chips">
               <van-button
@@ -582,7 +522,6 @@ onBeforeUnmount(stopPolling)
                 {{ prompt }}
               </van-button>
             </div>
-            <p class="conversation-empty__example mobile-subtle">例如：分析英伟达，关注估值、未来两季催化，以及当前最大的下行风险。</p>
           </div>
 
           <div v-else class="conversation-stream">
@@ -595,19 +534,38 @@ onBeforeUnmount(stopPolling)
                 `conversation-message--${message.messageType}`
               ]"
             >
-              <template v-if="message.messageType === 'summary_card'">
+              <template v-if="message.messageType === MessageType.SUMMARY_CARD">
                 <section class="conversation-inline-card conversation-inline-card--summary">
                   <span class="conversation-inline-card__eyebrow">执行摘要</span>
                   <h3 class="conversation-inline-card__title">先看核心观点，再决定是否进入全文。</h3>
-                  <p class="conversation-summary">{{ getMessageText(message) }}</p>
+                  <div
+                    class="conversation-summary conversation-summary--markdown"
+                    v-html="renderMarkdown(
+                      isSummaryExpanded(message.id)
+                        ? getMessageText(message)
+                        : getSummaryPreview(getMessageText(message))
+                    )"
+                  />
+                  <button
+                    class="conversation-summary__toggle"
+                    type="button"
+                    :data-expanded="isSummaryExpanded(message.id) ? '' : undefined"
+                    @click="toggleSummary(message.id)"
+                  >
+                    {{ isSummaryExpanded(message.id) ? '收起' : '展开全文' }}
+                  </button>
                 </section>
               </template>
 
-              <template v-else-if="message.messageType === 'report_card'">
+              <template v-else-if="message.messageType === MessageType.REPORT_CARD">
                 <section class="conversation-inline-card conversation-inline-card--report">
                   <span class="conversation-inline-card__eyebrow">完整报告</span>
                   <h3 class="conversation-inline-card__title">{{ getReportCardTitle(message) }}</h3>
                   <p class="conversation-inline-card__description">完整报告已经生成，你可以进入独立阅读页查看全文。</p>
+                  <p
+                    v-if="getReportCardCreatedAt(message)"
+                    class="conversation-inline-card__meta"
+                  >生成时间：{{ formatDateTime(getReportCardCreatedAt(message)) }}</p>
                   <div class="conversation-inline-card__action">
                     <van-button
                       size="small"
@@ -620,8 +578,14 @@ onBeforeUnmount(stopPolling)
                 </section>
               </template>
 
-              <template v-else-if="message.messageType === 'ticker_resolution'">
-                <section class="conversation-inline-card conversation-inline-card--resolution">
+              <template v-else-if="message.messageType === MessageType.TICKER_RESOLUTION">
+                <section
+                  class="conversation-inline-card conversation-inline-card--resolution"
+                  :class="{
+                    'conversation-inline-card--resolution-error':
+                      getResolutionStatus(message) === 'failed' || getResolutionStatus(message) === 'unsupported'
+                  }"
+                >
                   <span class="conversation-inline-card__eyebrow">标的确认</span>
                   <h3 class="conversation-inline-card__title">{{ getResolutionCardTitle(message) }}</h3>
                   <p class="conversation-inline-card__description">{{ getMessageText(message) }}</p>
@@ -629,8 +593,21 @@ onBeforeUnmount(stopPolling)
                     {{ getResolutionFocusText(message) }}
                   </p>
 
+                  <p
+                    v-if="getResolutionStatus(message) === 'failed'"
+                    class="conversation-inline-card__alert"
+                  >
+                    请重新输入公司全名或股票代码，例如 AAPL、0700.HK、300750.SZ。
+                  </p>
+                  <p
+                    v-else-if="getResolutionStatus(message) === 'unsupported'"
+                    class="conversation-inline-card__alert"
+                  >
+                    当前仅支持 A 股、港股、美股标的，请重新输入。
+                  </p>
+
                   <div
-                    v-if="getResolutionStatus(message) === 'need_confirm' && canInteractWithResolution(message)"
+                    v-else-if="getResolutionStatus(message) === 'need_confirm' && canInteractWithResolution(message)"
                     class="conversation-inline-card__actions"
                   >
                     <van-button
@@ -678,6 +655,29 @@ onBeforeUnmount(stopPolling)
                 </section>
               </template>
 
+              <template v-else-if="message.messageType === MessageType.TASK_STATUS">
+                <div class="task-status-wrapper">
+                  <div class="conversation-notice conversation-notice--progress">
+                    <span class="conversation-notice__dot" aria-hidden="true" />
+                    <p>{{ getMessageText(message) }}</p>
+                  </div>
+                  <div
+                    v-if="message.id === latestTaskStatusId && taskProgress"
+                    class="task-inline-timer"
+                  >
+                    <span>已用 {{ formatSeconds(taskProgress.elapsedTime) }}</span>
+                    <span v-if="taskProgress.remainingTime">· 预计剩余 {{ formatSeconds(taskProgress.remainingTime) }}</span>
+                  </div>
+                </div>
+              </template>
+
+              <template v-else-if="message.messageType === MessageType.ERROR">
+                <div class="conversation-notice conversation-notice--error">
+                  <span class="conversation-notice__dot" aria-hidden="true">!</span>
+                  <p>{{ getMessageText(message) }}</p>
+                </div>
+              </template>
+
               <template v-else>
                 <div class="conversation-bubble">
                   <span v-if="message.role !== 'assistant'" class="conversation-bubble__role">
@@ -702,13 +702,9 @@ onBeforeUnmount(stopPolling)
               rows="3"
               autosize
               type="textarea"
-              :placeholder="placeholderText"
               @keydown.enter.exact.prevent="submitPrompt"
             />
-            <van-button round type="primary" :loading="sendingLoading" @click="submitPrompt">发送</van-button>
-          </div>
-          <div v-if="composerHint" class="conversation-input__actions">
-            <span class="mobile-subtle">{{ composerHint }}</span>
+            <van-button round type="primary" :loading="sendingLoading || isAnalyzing" @click="submitPrompt">发送</van-button>
           </div>
         </div>
       </div>
@@ -927,9 +923,141 @@ onBeforeUnmount(stopPolling)
   display: none;
 }
 
+.conversation-notice {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 0;
+  width: 100%;
+}
+
+.conversation-notice p {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.conversation-notice__dot {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+  width: 14px;
+  text-align: center;
+}
+
+.conversation-notice--progress p {
+  color: var(--mobile-color-text-tertiary);
+}
+
+.conversation-notice--progress .conversation-notice__dot {
+  color: var(--mobile-color-text-tertiary);
+}
+
+.conversation-notice--progress .conversation-notice__dot::before {
+  content: '·';
+  font-size: 18px;
+}
+
+.task-status-wrapper {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.task-inline-timer {
+  display: flex;
+  gap: 6px;
+  padding: 0 0 4px 20px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--mobile-color-text-tertiary);
+  opacity: 0.75;
+  white-space: nowrap;
+}
+
+.conversation-notice--error p {
+  color: rgba(255, 107, 107, 0.85);
+}
+
+.conversation-notice--error .conversation-notice__dot {
+  color: rgba(255, 107, 107, 0.85);
+}
+
 .conversation-summary {
   line-height: 1.7;
   white-space: pre-wrap;
+}
+
+.conversation-summary--markdown {
+  white-space: normal;
+
+  :deep(p) {
+    margin: 0 0 8px;
+    &:last-child {
+      margin-bottom: 0;
+    }
+  }
+
+  :deep(h1),
+  :deep(h2),
+  :deep(h3) {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 10px 0 4px;
+  }
+
+  :deep(ul),
+  :deep(ol) {
+    padding-left: 18px;
+    margin: 4px 0 8px;
+  }
+
+  :deep(li) {
+    margin: 2px 0;
+  }
+
+  :deep(strong) {
+    font-weight: 600;
+  }
+
+  :deep(blockquote) {
+    margin: 6px 0;
+    padding: 4px 10px;
+    border-left: 3px solid rgba(0, 0, 0, 0.15);
+    color: rgba(0, 0, 0, 0.55);
+    font-size: 13px;
+  }
+}
+
+.conversation-summary__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 10px;
+  padding: 0;
+  background: none;
+  border: none;
+  font-size: 13px;
+  color: var(--van-primary-color, #1989fa);
+  cursor: pointer;
+  gap: 2px;
+
+  &::after {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-right: 1.5px solid currentColor;
+    border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg) translateY(-2px);
+    transition: transform 0.2s;
+  }
+
+  &[data-expanded]::after {
+    transform: rotate(-135deg) translateY(-2px);
+  }
 }
 
 .conversation-inline-card {
@@ -962,6 +1090,13 @@ onBeforeUnmount(stopPolling)
   line-height: 1.6;
 }
 
+.conversation-inline-card__meta {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: var(--mobile-color-text-secondary);
+  opacity: 0.7;
+}
+
 .conversation-inline-card__action {
   margin-top: 12px;
 }
@@ -983,6 +1118,18 @@ onBeforeUnmount(stopPolling)
   color: var(--mobile-color-text-tertiary);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.conversation-inline-card--resolution-error {
+  border-color: rgba(255, 107, 107, 0.24);
+  background: rgba(255, 107, 107, 0.05);
+}
+
+.conversation-inline-card__alert {
+  margin: 8px 0 0;
+  color: rgba(255, 107, 107, 0.85);
+  font-size: 13px;
+  line-height: 1.6;
 }
 
 .conversation-input {
@@ -1016,31 +1163,7 @@ onBeforeUnmount(stopPolling)
   font-size: 15px;
 }
 
-.conversation-input :deep(textarea::placeholder) {
-  color: var(--mobile-color-text-secondary);
-}
 
-.conversation-input__actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-start;
-  margin-top: 6px;
-  padding: 0 12px 2px;
-}
-
-.conversation-input__actions span {
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.conversation-input__actions :deep(.van-button) {
-  min-width: 46px;
-  height: 46px;
-  padding: 0 16px;
-  font-size: 15px;
-  font-weight: 700;
-  flex-shrink: 0;
-}
 
 .conversation-drawer {
   display: flex;

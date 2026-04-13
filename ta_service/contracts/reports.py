@@ -11,4 +11,5 @@ def build_report_detail(document: dict) -> ReportDetailResponse:
         summary=document.get("summary"),
         executiveSummary=document.get("executiveSummary"),
         contentMarkdown=document.get("contentMarkdown"),
+        createdAt=document.get("createdAt"),
     )
