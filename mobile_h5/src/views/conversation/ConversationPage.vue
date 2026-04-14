@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import { useRouter } from 'vue-router'
@@ -41,6 +41,9 @@ const conversationInputRef = ref<HTMLElement | null>(null)
 const isHeaderCompact = ref(false)
 const showScrollToBottom = ref(false)
 const skipAutoStickMessageId = ref<string | null>(null)
+const keyboardOffset = ref(0)
+const composerFocused = ref(false)
+let composerBlurTimer = 0
 
 const currentConversation = computed(() => conversationStore.currentConversation)
 const currentMessages = computed(() => conversationStore.currentMessages)
@@ -64,6 +67,46 @@ const scrollConversationToBottom = (behavior: ScrollBehavior = 'auto') => {
   if (element) {
     element.scrollTo({ top: element.scrollHeight, behavior })
   }
+}
+
+const updateKeyboardOffset = () => {
+  if (typeof window === 'undefined') return
+
+  const viewport = window.visualViewport
+  if (!viewport || !composerFocused.value) {
+    keyboardOffset.value = 0
+    return
+  }
+
+  const nextOffset = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)
+  keyboardOffset.value = nextOffset > 0 ? nextOffset : 0
+}
+
+const conversationViewportStyle = computed(() => ({
+  '--conversation-keyboard-offset': `${keyboardOffset.value}px`,
+}))
+
+const handleComposerFocusIn = () => {
+  composerFocused.value = true
+  window.clearTimeout(composerBlurTimer)
+  updateKeyboardOffset()
+  window.requestAnimationFrame(() => {
+    scrollConversationToBottom('smooth')
+  })
+}
+
+const handleComposerFocusOut = () => {
+  if (typeof window === 'undefined') return
+
+  window.clearTimeout(composerBlurTimer)
+  composerBlurTimer = window.setTimeout(() => {
+    const activeElement = document.activeElement
+    const stillFocused =
+      activeElement instanceof HTMLElement && conversationInputRef.value?.contains(activeElement)
+
+    composerFocused.value = Boolean(stillFocused)
+    updateKeyboardOffset()
+  }, 0)
 }
 
 const getComposerOffset = () => {
@@ -610,10 +653,24 @@ watch(
 )
 
 onMounted(async () => {
+  if (typeof window !== 'undefined') {
+    window.visualViewport?.addEventListener('resize', updateKeyboardOffset)
+    window.visualViewport?.addEventListener('scroll', updateKeyboardOffset)
+  }
+
   await bootstrap()
   initializeInsightReplyCollapseState()
   await nextTick()
+  updateKeyboardOffset()
   syncConversationChromeState()
+})
+
+onUnmounted(() => {
+  if (typeof window === 'undefined') return
+
+  window.clearTimeout(composerBlurTimer)
+  window.visualViewport?.removeEventListener('resize', updateKeyboardOffset)
+  window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset)
 })
 </script>
 
@@ -640,7 +697,7 @@ onMounted(async () => {
     </template>
 
 
-    <div class="conversation-page">
+    <div class="conversation-page" :style="conversationViewportStyle">
       <van-popup
         :show="conversationStore.isDrawerOpen"
         position="left"
@@ -956,7 +1013,13 @@ onMounted(async () => {
     </div>
 
     <template #footer>
-      <div ref="conversationInputRef" class="conversation-input">
+      <div
+        ref="conversationInputRef"
+        class="conversation-input"
+        :style="conversationViewportStyle"
+        @focusin="handleComposerFocusIn"
+        @focusout="handleComposerFocusOut"
+      >
         <div class="conversation-input__shell">
           <div class="conversation-input__row">
             <van-field
@@ -987,6 +1050,7 @@ onMounted(async () => {
 
 <style scoped>
 .conversation-page {
+  --conversation-keyboard-offset: 0px;
   flex: 1;
   position: relative;
   display: flex;
@@ -1073,7 +1137,7 @@ onMounted(async () => {
   overscroll-behavior: contain;
   padding-left: clamp(24px, 6vw, 40px);
   padding-right: clamp(24px, 6vw, 40px);
-  padding-bottom: calc(154px + var(--mobile-safe-bottom));
+  padding-bottom: calc(154px + var(--mobile-safe-bottom) + var(--conversation-keyboard-offset));
 }
 
 .conversation-page__body--locked {
@@ -1083,7 +1147,7 @@ onMounted(async () => {
 .conversation-page__scroll-bottom-track {
   position: absolute;
   left: 50%;
-  bottom: calc(58px + var(--mobile-safe-bottom));
+  bottom: calc(58px + var(--mobile-safe-bottom) + var(--conversation-keyboard-offset));
   z-index: 6;
   width: calc(100% - (2 * clamp(24px, 6vw, 40px)));
   max-width: 480px;
@@ -1702,7 +1766,7 @@ onMounted(async () => {
 }
 
 .conversation-input {
-  padding: 6px var(--mobile-space-md) 10px;
+  padding: 6px var(--mobile-space-md) calc(10px + var(--conversation-keyboard-offset));
 }
 
 .conversation-input__shell {

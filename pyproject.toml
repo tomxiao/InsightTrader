@@ -39,6 +39,7 @@ dependencies = [
     "typing-extensions>=4.14.0",
     "uvicorn",
     "yfinance>=0.2.63",
+    "paramiko>=4.0.0",
 ]
 
 [project.optional-dependencies]
