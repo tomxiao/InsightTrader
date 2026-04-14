@@ -7,7 +7,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from ta_service.models.conversation import ConversationMessage, TaskProgress
 
-
 ResolutionStatus = Literal[
     "collect_more",
     "need_confirm",

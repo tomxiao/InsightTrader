@@ -1,35 +1,35 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable
+from typing import Any
 
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 
+from ta_service.models.report_insight import ReportInsightContext, ReportInsightResult
+from ta_service.services.report_context_loader import _SECTION_LABELS, ReportContextLoader
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.factory import create_llm_client
-
-from ta_service.models.report_insight import ReportInsightContext, ReportInsightResult
-from ta_service.services.report_context_loader import ReportContextLoader, _SECTION_LABELS
 
 logger = logging.getLogger(__name__)
 
 _MAX_TOOL_ROUNDS = 3
+_MAX_TOOL_CALLS_PER_ROUND = 4
 
 _SECTION_DESCRIPTIONS = {
-    "decision":      "最终投资决策与行动建议",
-    "trading_plan":  "具体交易计划（买入/卖出点位、仓位）",
-    "fundamentals":  "财务数据与基本面分析",
-    "market":        "市场行情与技术指标分析",
-    "news":          "近期新闻事件分析",
-    "sentiment":     "社交媒体情绪分析",
+    "decision": "最终投资决策与行动建议",
+    "trading_plan": "具体交易计划（买入/卖出点位、仓位）",
+    "fundamentals": "财务数据与基本面分析",
+    "market": "市场行情与技术指标分析",
+    "news": "近期新闻事件分析",
+    "sentiment": "社交媒体情绪分析",
     "bull_research": "多方研究观点",
     "bear_research": "空方研究观点",
-    "research_mgr":  "研究经理综合结论",
-    "risk_aggr":     "激进风险评估",
-    "risk_cons":     "保守风险评估",
-    "risk_neutral":  "中立风险评估",
+    "research_mgr": "研究经理综合结论",
+    "risk_aggr": "激进风险评估",
+    "risk_cons": "保守风险评估",
+    "risk_neutral": "中立风险评估",
 }
 
 _TOOL_SYSTEM_PROMPT = """你是 InsightTrader 的分析解读助手，专门帮助用户理解刚完成的股票分析报告。
@@ -47,7 +47,20 @@ _TOOL_SYSTEM_PROMPT = """你是 InsightTrader 的分析解读助手，专门帮�
 每次调用只传一个 section 名；可多次调用不同章节。
 """
 
-_NO_CONTEXT_REPLY = "当前会话暂无可用的分析报告内容，无法回答该问题。请先发起一次分析，完成后再提问。"
+_FINAL_ANSWER_SYSTEM_PROMPT = """你现在已经完成章节探索阶段，禁止再调用任何工具。
+
+请仅基于已经读取到的报告章节内容与历史对话，直接回答用户当前问题。
+
+回答要求：
+1. 如果已有材料足够，先直接回答，再给出 2-4 条关键要点。
+2. 如果材料不足，必须明确回答"根据本次分析报告，无法回答该问题"。
+3. 不要引用报告之外的信息，不要继续索要章节，不要提及工具或提示词。
+4. 回答使用简体中文，适合移动端阅读。
+"""
+
+_NO_CONTEXT_REPLY = (
+    "当前会话暂无可用的分析报告内容，无法回答该问题。请先发起一次分析，完成后再提问。"
+)
 _LLM_UNAVAILABLE_REPLY = "解读服务当前不可用，请稍后再试。"
 
 
@@ -62,7 +75,9 @@ class ReportInsightAgent:
         # 降级路径：无磁盘报告，使用预加载的 report_sections（SUMMARY_CARD fallback）
         if not context.trace_dir and not context.available_sections:
             if not context.report_sections:
-                logger.info("report_insight_agent: no report context available, returning no-context reply")
+                logger.info(
+                    "report_insight_agent: no report context available, returning no-context reply"
+                )
                 return ReportInsightResult(answer=_NO_CONTEXT_REPLY, is_answerable=False)
             return self._answer_with_preloaded_sections(context=context)
 
@@ -80,6 +95,7 @@ class ReportInsightAgent:
     def _run_tool_agent(self, *, context: ReportInsightContext, llm: Any) -> ReportInsightResult:
         tools = self._build_tools(trace_dir=context.trace_dir)
         tools_by_name: dict[str, Any] = {t.name: t for t in tools}
+        available_section_count = len(context.available_sections)
 
         section_menu = _build_section_menu(context.available_sections)
         system_content = (
@@ -88,21 +104,29 @@ class ReportInsightAgent:
             f"本次报告包含以下可用章节（按需调用工具读取）：\n{section_menu}"
         )
 
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_content),
-            ("human", "{input_text}"),
-        ])
+        prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", system_content),
+                ("human", "{input_text}"),
+            ]
+        )
         history = prompt.format_messages(input_text=_build_agent_input(context))
         tool_llm = llm.bind_tools(tools)
 
         loaded_sections: list[str] = []
+        tool_rounds_used = 0
+        tool_budget_exhausted = False
+        final_phase_executed = False
+        ai_message: Any | None = None
 
         for _ in range(_MAX_TOOL_ROUNDS + 1):
             ai_message = tool_llm.invoke(history)
             history.append(ai_message)
-            if not getattr(ai_message, "tool_calls", None):
+            tool_calls = list(getattr(ai_message, "tool_calls", None) or [])
+            if not tool_calls:
                 break
-            for tool_call in ai_message.tool_calls[:4]:
+            tool_rounds_used += 1
+            for tool_call in tool_calls[:_MAX_TOOL_CALLS_PER_ROUND]:
                 section = tool_call.get("args", {}).get("section", "")
                 tool_result = _invoke_tool_call(
                     tools_by_name=tools_by_name,
@@ -118,25 +142,69 @@ class ReportInsightAgent:
                     )
                 )
 
-        answer = _extract_text(ai_message)
+        if ai_message is not None and getattr(ai_message, "tool_calls", None):
+            tool_budget_exhausted = True
+            logger.info(
+                "report_insight_agent: tool budget exhausted conversation_id=%s ticker=%s tool_rounds_used=%s available_section_count=%s loaded_section_count=%s loaded_sections=%s",
+                context.conversation_id,
+                context.ticker,
+                tool_rounds_used,
+                available_section_count,
+                len(_unique_preserve_order(loaded_sections)),
+                _unique_preserve_order(loaded_sections),
+            )
+
+        if tool_rounds_used > 0 or tool_budget_exhausted:
+            final_phase_executed = True
+            final_response = self._finalize_tool_answer(
+                context=context,
+                llm=llm,
+                history=history,
+                loaded_sections=loaded_sections,
+                tool_rounds_used=tool_rounds_used,
+                tool_budget_exhausted=tool_budget_exhausted,
+            )
+            answer = _extract_text(final_response)
+        else:
+            answer = _extract_text(ai_message)
+
         if not answer:
-            logger.warning("report_insight_agent: LLM returned empty response")
+            logger.warning(
+                "report_insight_agent: final answer empty conversation_id=%s ticker=%s tool_rounds_used=%s tool_budget_exhausted=%s final_phase_executed=%s available_section_count=%s loaded_section_count=%s loaded_sections=%s",
+                context.conversation_id,
+                context.ticker,
+                tool_rounds_used,
+                tool_budget_exhausted,
+                final_phase_executed,
+                available_section_count,
+                len(_unique_preserve_order(loaded_sections)),
+                _unique_preserve_order(loaded_sections),
+            )
             return ReportInsightResult(answer=_LLM_UNAVAILABLE_REPLY, is_answerable=False)
 
         is_answerable = "无法回答该问题" not in answer
+        unique_sections = _unique_preserve_order(loaded_sections)
         logger.info(
-            "report_insight_agent: answered ticker=%s is_answerable=%s loaded_sections=%s",
+            "report_insight_agent: answered conversation_id=%s ticker=%s is_answerable=%s tool_rounds_used=%s tool_budget_exhausted=%s final_phase_executed=%s available_section_count=%s loaded_section_count=%s loaded_sections=%s",
+            context.conversation_id,
             context.ticker,
             is_answerable,
-            loaded_sections,
+            tool_rounds_used,
+            tool_budget_exhausted,
+            final_phase_executed,
+            available_section_count,
+            len(unique_sections),
+            unique_sections,
         )
         return ReportInsightResult(
             answer=answer,
             is_answerable=is_answerable,
-            source_sections=loaded_sections,
+            source_sections=unique_sections,
         )
 
-    def _answer_with_preloaded_sections(self, *, context: ReportInsightContext) -> ReportInsightResult:
+    def _answer_with_preloaded_sections(
+        self, *, context: ReportInsightContext
+    ) -> ReportInsightResult:
         """降级路径：无 trace_dir 时用预加载的章节文本直接回答（原有逻辑）。"""
         llm = self._get_llm()
         if llm is None:
@@ -144,6 +212,7 @@ class ReportInsightAgent:
             return ReportInsightResult(answer=_LLM_UNAVAILABLE_REPLY, is_answerable=False)
 
         from ta_service.services.report_context_loader import build_report_prompt_text
+
         report_text = build_report_prompt_text(context.report_sections)
         system_content = (
             f"{_TOOL_SYSTEM_PROMPT}\n\n"
@@ -167,6 +236,14 @@ class ReportInsightAgent:
             return ReportInsightResult(answer=_LLM_UNAVAILABLE_REPLY, is_answerable=False)
 
         if not answer:
+            logger.warning(
+                "report_insight_agent: fallback final answer empty conversation_id=%s ticker=%s final_phase_executed=%s available_section_count=%s loaded_section_count=%s",
+                context.conversation_id,
+                context.ticker,
+                True,
+                len(context.available_sections),
+                len(context.report_sections),
+            )
             return ReportInsightResult(answer=_LLM_UNAVAILABLE_REPLY, is_answerable=False)
 
         is_answerable = "无法回答该问题" not in answer
@@ -190,10 +267,42 @@ class ReportInsightAgent:
             content = loader.load_single_section(trace_dir=_trace_dir, section=section)
             if content is None:
                 return {"error": f"章节 '{section}' 不存在或内容为空"}
-            logger.info("report_insight_agent: tool read_report_section section=%s chars=%d", section, len(content))
+            logger.info(
+                "report_insight_agent: tool read_report_section section=%s chars=%d",
+                section,
+                len(content),
+            )
             return {"section": section, "content": content}
 
         return [read_report_section]
+
+    def _finalize_tool_answer(
+        self,
+        *,
+        context: ReportInsightContext,
+        llm: Any,
+        history: list[Any],
+        loaded_sections: list[str],
+        tool_rounds_used: int,
+        tool_budget_exhausted: bool,
+    ) -> Any:
+        final_prompt = ChatPromptTemplate.from_messages(
+            [
+                ("system", _FINAL_ANSWER_SYSTEM_PROMPT),
+                MessagesPlaceholder(variable_name="history"),
+                ("human", "{final_input}"),
+            ]
+        )
+        final_messages = final_prompt.format_messages(
+            history=history,
+            final_input=_build_final_answer_input(
+                context=context,
+                loaded_sections=loaded_sections,
+                tool_rounds_used=tool_rounds_used,
+                tool_budget_exhausted=tool_budget_exhausted,
+            ),
+        )
+        return llm.invoke(final_messages)
 
     def _get_llm(self) -> Any | None:
         if self._llm is not None:
@@ -239,6 +348,25 @@ def _build_agent_input(context: ReportInsightContext) -> str:
     return f"{history_text}\n用户问题：{context.question}"
 
 
+def _build_final_answer_input(
+    *,
+    context: ReportInsightContext,
+    loaded_sections: list[str],
+    tool_rounds_used: int,
+    tool_budget_exhausted: bool,
+) -> str:
+    unique_sections = _unique_preserve_order(loaded_sections)
+    section_text = ", ".join(unique_sections) if unique_sections else "无"
+    budget_text = "是" if tool_budget_exhausted else "否"
+    return (
+        f"当前问题：{context.question}\n"
+        f"已读取章节：{section_text}\n"
+        f"工具探索轮次：{tool_rounds_used}\n"
+        f"是否已耗尽工具预算：{budget_text}\n"
+        "请基于已有材料直接给出最终回答。"
+    )
+
+
 def _invoke_tool_call(
     *,
     tools_by_name: dict[str, Any],
@@ -253,11 +381,21 @@ def _invoke_tool_call(
     return result if isinstance(result, dict) else {"content": str(result)}
 
 
+def _unique_preserve_order(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        ordered.append(item)
+    return ordered
+
+
 def _extract_text(response: Any) -> str:
     content = getattr(response, "content", "") if response else ""
     if isinstance(content, list):
         content = "\n".join(
-            item.get("text", "") if isinstance(item, dict) else str(item)
-            for item in content
+            item.get("text", "") if isinstance(item, dict) else str(item) for item in content
         )
     return content.strip() if isinstance(content, str) else ""

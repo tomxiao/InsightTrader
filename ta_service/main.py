@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import sys
+
 import uvicorn
 
 from ta_service.config.logging_config import setup_logging
 
 setup_logging()
 
-from ta_service.app.factory import create_app
-from ta_service.config.settings import get_settings
-
+from ta_service.app.factory import create_app  # noqa: E402
+from ta_service.config.settings import get_settings  # noqa: E402
 
 app = create_app()
 
@@ -23,7 +23,7 @@ def run() -> None:
             port=settings.port,
             reload=settings.environment == "development",
         )
-    except SystemExit as exc:
+    except SystemExit:
         raise
     except OSError as exc:
         print(

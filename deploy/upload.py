@@ -2,18 +2,18 @@
 推送后端代码到生产服务器（白名单模式，只传必要文件）
 用法：python deploy/upload.py
 """
-import os
-import stat
+
 from pathlib import Path
+
 import paramiko
 from paramiko import RSAKey
 
 # ── 配置 ──────────────────────────────────────────────────────────────────────
-HOST        = "93901.pro"
-PORT        = 22
-USER        = "root"
-PEM         = Path.home() / ".ssh" / "InsightTrader.pem"
-LOCAL_ROOT  = Path(__file__).resolve().parent.parent  # deploy/ 的上级即项目根
+HOST = "93901.pro"
+PORT = 22
+USER = "root"
+PEM = Path.home() / ".ssh" / "InsightTrader.pem"
+LOCAL_ROOT = Path(__file__).resolve().parent.parent  # deploy/ 的上级即项目根
 REMOTE_ROOT = "/opt/insighttrader"
 
 # 只上传这些顶层目录和文件（白名单）
@@ -32,7 +32,8 @@ INCLUDE_FILES = {
 
 # 目录内部的排除规则
 EXCLUDE_SUFFIXES = {".pyc", ".pyo"}
-EXCLUDE_NAMES    = {"__pycache__", ".pytest_cache"}
+EXCLUDE_NAMES = {"__pycache__", ".pytest_cache"}
+
 
 # ── 收集需要上传的文件 ─────────────────────────────────────────────────────────
 def collect_files():
@@ -62,6 +63,7 @@ def collect_files():
 
     return files
 
+
 # ── 远端创建目录（递归）────────────────────────────────────────────────────────
 def mkdir_p(sftp, remote_dir):
     dirs = []
@@ -77,6 +79,7 @@ def mkdir_p(sftp, remote_dir):
                 sftp.mkdir(d)
             except Exception:
                 pass
+
 
 # ── 上传 ──────────────────────────────────────────────────────────────────────
 def upload():
@@ -98,7 +101,7 @@ def upload():
 
     for i, (local_path, rel) in enumerate(files, 1):
         remote_path = REMOTE_ROOT + "/" + rel.as_posix()
-        remote_dir  = remote_path.rsplit("/", 1)[0]
+        remote_dir = remote_path.rsplit("/", 1)[0]
         mkdir_p(sftp, remote_dir)
         sftp.put(str(local_path), remote_path)
         print(f"[{i:>4}/{total}] {rel}")
@@ -106,6 +109,7 @@ def upload():
     sftp.close()
     client.close()
     print(f"\n完成：共上传 {total} 个文件到 {REMOTE_ROOT}")
+
 
 if __name__ == "__main__":
     upload()

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -65,7 +65,9 @@ class ResolutionService:
         existing_pending = _parse_pending_snapshot(conversation.get("pendingResolution"))
         round_number = (existing_pending.round if existing_pending else 0) + 1
         resolution_id = str(uuid4())
-        analysis_prompt = _compose_analysis_prompt(existing_pending=existing_pending, message=current_message)
+        analysis_prompt = _compose_analysis_prompt(
+            existing_pending=existing_pending, message=current_message
+        )
 
         user_message = self.message_repo.create(
             conversation_id=conversation_id,
@@ -112,15 +114,21 @@ class ResolutionService:
             original_message=current_message,
             analysis_prompt=analysis_prompt,
         )
-        confirmed_stock = result.stock.model_dump() if result.status == "resolved" and result.stock else None
+        confirmed_stock = (
+            result.stock.model_dump() if result.status == "resolved" and result.stock else None
+        )
         confirmed_analysis_prompt = analysis_prompt if result.status == "resolved" else None
-        conversation_status = "ready_to_analyze" if result.status == "resolved" else "collecting_inputs"
+        conversation_status = (
+            "ready_to_analyze" if result.status == "resolved" else "collecting_inputs"
+        )
 
         self.state_machine.transition(
             conversation_id=conversation_id,
             user_id=user_id,
             to_status=conversation_status,
-            pending_resolution=pending_resolution.model_dump(mode="json") if pending_resolution else None,
+            pending_resolution=pending_resolution.model_dump(mode="json")
+            if pending_resolution
+            else None,
             confirmed_stock=confirmed_stock,
             confirmed_analysis_prompt=confirmed_analysis_prompt,
         )
@@ -279,7 +287,8 @@ class ResolutionService:
         if active_task:
             logger.warning(
                 "auto_launch_skipped reason=active_task_exists user_id=%s conversation_id=%s",
-                user_id, conversation_id,
+                user_id,
+                conversation_id,
             )
             return None
         trade_date = _TODAY().strftime("%Y%m%d")
@@ -293,13 +302,17 @@ class ResolutionService:
             )
             logger.info(
                 "auto_launch_success conversation_id=%s ticker=%s task_id=%s",
-                conversation_id, ticker, task_doc["taskId"],
+                conversation_id,
+                ticker,
+                task_doc["taskId"],
             )
             return task_doc
         except Exception as exc:
             logger.exception(
                 "auto_launch_failed conversation_id=%s ticker=%s error=%s",
-                conversation_id, ticker, exc,
+                conversation_id,
+                ticker,
+                exc,
             )
             return None
 
@@ -309,7 +322,9 @@ class ResolutionService:
             user_id=user_id,
         )
         if not conversation:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+            )
         return conversation
 
     def _ensure_resolution_allowed(self, conversation: dict) -> None:
@@ -334,16 +349,25 @@ class ResolutionService:
         candidates = pending.candidates
         if payload.action == "confirm":
             if pending.status != "need_confirm" or not candidates:
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Resolution is not confirmable")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="Resolution is not confirmable"
+                )
             ticker = candidates[0].ticker
         elif payload.action == "select":
             if pending.status != "need_disambiguation":
-                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Resolution is not selectable")
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT, detail="Resolution is not selectable"
+                )
             ticker = (payload.ticker or "").strip().upper()
             if not ticker or all(item.ticker != ticker for item in candidates):
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Ticker is not in candidate list")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Ticker is not in candidate list",
+                )
         else:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported resolution action")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported resolution action"
+            )
 
         try:
             stock = self.stock_lookup_gateway.get_stock_profile(ticker=ticker)
@@ -353,7 +377,9 @@ class ResolutionService:
                 detail="Stock profile service is unavailable",
             ) from exc
         if stock is None:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock profile not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Stock profile not found"
+            )
         return stock
 
 
@@ -436,7 +462,9 @@ def _parse_pending_snapshot(pending: dict | None) -> PendingResolutionSnapshot |
 def _build_prior_summary(pending: PendingResolutionSnapshot | None) -> str:
     if pending is None:
         return ""
-    candidate_labels = ", ".join(f"{item.name}({item.ticker})" for item in pending.candidates[:3]) or "无"
+    candidate_labels = (
+        ", ".join(f"{item.name}({item.ticker})" for item in pending.candidates[:3]) or "无"
+    )
     return (
         f"上一轮状态={pending.status}；"
         f"上一轮原始输入={pending.originalMessage}；"
@@ -445,7 +473,9 @@ def _build_prior_summary(pending: PendingResolutionSnapshot | None) -> str:
     )
 
 
-def _compose_analysis_prompt(*, existing_pending: PendingResolutionSnapshot | None, message: str) -> str:
+def _compose_analysis_prompt(
+    *, existing_pending: PendingResolutionSnapshot | None, message: str
+) -> str:
     if not existing_pending:
         return message
 

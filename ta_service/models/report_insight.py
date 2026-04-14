@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 class ReportInsightContext(BaseModel):
     """传递给 ReportInsightAgent 的输入上下文。"""
 
+    conversation_id: str = ""
     question: str
     ticker: str
     trade_date: str

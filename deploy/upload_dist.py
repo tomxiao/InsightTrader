@@ -1,14 +1,17 @@
 """上传前端 dist/ 到服务器"""
+
 from pathlib import Path
+
 import paramiko
 from paramiko import RSAKey
 
-HOST        = "93901.pro"
-PORT        = 22
-USER        = "root"
-PEM         = Path.home() / ".ssh" / "InsightTrader.pem"
-LOCAL_DIST  = Path(__file__).resolve().parent.parent / "mobile_h5" / "dist"
+HOST = "93901.pro"
+PORT = 22
+USER = "root"
+PEM = Path.home() / ".ssh" / "InsightTrader.pem"
+LOCAL_DIST = Path(__file__).resolve().parent.parent / "mobile_h5" / "dist"
 REMOTE_DIST = "/opt/insighttrader/mobile_h5/dist"
+
 
 def mkdir_p(sftp, remote_dir):
     dirs = []
@@ -24,6 +27,7 @@ def mkdir_p(sftp, remote_dir):
                 sftp.mkdir(d)
             except Exception:
                 pass
+
 
 def upload():
     files = [p for p in LOCAL_DIST.rglob("*") if p.is_file()]
@@ -48,6 +52,7 @@ def upload():
     sftp.close()
     client.close()
     print(f"\n完成：共上传 {total} 个文件")
+
 
 if __name__ == "__main__":
     upload()

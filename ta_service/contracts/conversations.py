@@ -1,7 +1,16 @@
 from __future__ import annotations
 
-from ta_service.models.conversation import ConversationDetail, ConversationMessage, ConversationSummary, TaskProgress
-from ta_service.runtime.status_mapper import resolve_elapsed_time, resolve_remaining_time, resolve_stage_message
+from ta_service.models.conversation import (
+    ConversationDetail,
+    ConversationMessage,
+    ConversationSummary,
+    TaskProgress,
+)
+from ta_service.runtime.status_mapper import (
+    resolve_elapsed_time,
+    resolve_remaining_time,
+    resolve_stage_message,
+)
 
 
 def build_message(document: dict) -> ConversationMessage:

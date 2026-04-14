@@ -1,4 +1,5 @@
 """日志配置：落盘到 logs/ta_service.log，按天轮转，保留 14 天；ERROR+ 另写 error.log。"""
+
 from __future__ import annotations
 
 import logging

@@ -4,19 +4,19 @@ import logging
 
 from fastapi import HTTPException, status
 
+from ta_service.config.settings import Settings
 from ta_service.contracts.conversations import (
     build_conversation_detail,
-    build_message,
     build_conversation_summary,
+    build_message,
 )
-from ta_service.models.message_types import MessageType
 from ta_service.models.conversation import (
     ConversationDetail,
     ConversationSummary,
     PostConversationMessageResponse,
 )
+from ta_service.models.message_types import MessageType
 from ta_service.models.report_insight import ReportInsightContext
-from ta_service.config.settings import Settings
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
@@ -66,7 +66,9 @@ class ConversationService:
         ]
 
     def get_conversation(self, *, user_id: str, conversation_id: str) -> ConversationDetail | None:
-        document = self.conversation_repo.get_for_user(conversation_id=conversation_id, user_id=user_id)
+        document = self.conversation_repo.get_for_user(
+            conversation_id=conversation_id, user_id=user_id
+        )
         if not document:
             return None
         messages = self.message_repo.list_for_conversation(conversation_id)
@@ -81,7 +83,9 @@ class ConversationService:
             user_id=user_id,
         )
         if not conversation:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Conversation not found"
+            )
         if conversation.get("status") == "analyzing":
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -193,6 +197,7 @@ class ConversationService:
         history = self._build_conversation_history(all_messages=all_messages)
 
         return ReportInsightContext(
+            conversation_id=conversation.get("id", ""),
             question=question,
             ticker=ticker,
             trade_date=trade_date,
@@ -217,12 +222,10 @@ class ConversationService:
         """提取最近 N 轮 user/assistant 对话消息作为多轮历史。"""
         max_turns = self.settings.followup_history_turns
         text_messages = [
-            msg for msg in all_messages
+            msg
+            for msg in all_messages
             if msg.get("role") in ("user", "assistant")
             and msg.get("messageType") in (MessageType.TEXT, MessageType.INSIGHT_REPLY)
         ]
         recent = text_messages[-max_turns:] if len(text_messages) > max_turns else text_messages
-        return [
-            {"role": msg["role"], "content": msg.get("content", "")}
-            for msg in recent
-        ]
+        return [{"role": msg["role"], "content": msg.get("content", "")} for msg in recent]

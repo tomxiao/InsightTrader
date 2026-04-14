@@ -6,13 +6,17 @@ from ta_service.api.deps import get_conversation_service, get_current_user, get_
 from ta_service.models.auth import MobileUser
 from ta_service.models.conversation import (
     ConversationDetail,
-    PostConversationMessageRequest,
-    PostConversationMessageResponse,
     ConversationSummary,
     CreateConversationRequest,
+    PostConversationMessageRequest,
+    PostConversationMessageResponse,
+)
+from ta_service.models.resolution import (
+    ResolutionConfirmRequest,
+    ResolutionRequest,
+    ResolutionResponse,
 )
 from ta_service.services.conversation_service import ConversationService
-from ta_service.models.resolution import ResolutionConfirmRequest, ResolutionRequest, ResolutionResponse
 from ta_service.services.resolution_service import ResolutionService
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])

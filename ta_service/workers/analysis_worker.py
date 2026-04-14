@@ -6,7 +6,6 @@ import os
 import time
 
 from ta_service.adapters.tradingagents_runner import RunnerRequest, TradingAgentsRunner
-from ta_service.runtime.status_mapper import resolve_node_message, resolve_stage_message
 from ta_service.config.settings import get_settings
 from ta_service.db.mongo import create_mongo_client, get_database
 from ta_service.db.redis import create_redis_client
@@ -15,6 +14,7 @@ from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.repos.task_events import TaskEventRepository
+from ta_service.runtime.status_mapper import resolve_node_message, resolve_stage_message
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.workers.queue import AnalysisJobQueue
 
@@ -193,6 +193,7 @@ def main() -> None:
     parser.add_argument("--task-id", required=True, help="Analysis task id to process")
     args = parser.parse_args()
     from ta_service.config.logging_config import setup_logging
+
     setup_logging()
     LOGGER.info("worker process started task_id=%s", args.task_id)
     AnalysisTaskRunner().run_once(args.task_id)

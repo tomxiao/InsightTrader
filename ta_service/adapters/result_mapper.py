@@ -25,7 +25,9 @@ def save_report_to_disk(final_state: dict, save_path: Path) -> Path:
         (analysts_dir / "market.md").write_text(final_state["market_report"], encoding="utf-8")
     if final_state.get("sentiment_report"):
         analysts_dir.mkdir(exist_ok=True)
-        (analysts_dir / "sentiment.md").write_text(final_state["sentiment_report"], encoding="utf-8")
+        (analysts_dir / "sentiment.md").write_text(
+            final_state["sentiment_report"], encoding="utf-8"
+        )
     if final_state.get("news_report"):
         analysts_dir.mkdir(exist_ok=True)
         (analysts_dir / "news.md").write_text(final_state["news_report"], encoding="utf-8")
@@ -93,5 +95,3 @@ def extract_executive_summary(final_state: dict) -> str | None:
         if candidate and candidate.strip():
             return candidate.strip()
     return None
-
-

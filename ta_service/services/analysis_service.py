@@ -18,7 +18,11 @@ from ta_service.workers.launcher import spawn_analysis_task_runner
 
 logger = logging.getLogger(__name__)
 
-_DEBUG_SKIP_ANALYSIS = os.getenv("TA_SERVICE_DEBUG_SKIP_ANALYSIS", "").lower() in ("1", "true", "yes")
+_DEBUG_SKIP_ANALYSIS = os.getenv("TA_SERVICE_DEBUG_SKIP_ANALYSIS", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 
 class AnalysisService:
@@ -128,7 +132,9 @@ class AnalysisService:
             message_type=MessageType.TASK_STATUS,
             content={"text": "已收到分析请求，正在准备任务", "stageId": None},
         )
-        title = " ".join(prompt.strip().split())[:30] if prompt and prompt.strip() else f"{ticker} 分析"
+        title = (
+            " ".join(prompt.strip().split())[:30] if prompt and prompt.strip() else f"{ticker} 分析"
+        )
 
         self.state_machine.transition(
             conversation_id=conversation_id,
@@ -141,7 +147,9 @@ class AnalysisService:
         if _DEBUG_SKIP_ANALYSIS:
             logger.info(
                 "debug_skip_analysis task_id=%s ticker=%s conversation_id=%s",
-                document["taskId"], ticker, conversation_id,
+                document["taskId"],
+                ticker,
+                conversation_id,
             )
             self.task_repo.update_status(
                 document["taskId"],

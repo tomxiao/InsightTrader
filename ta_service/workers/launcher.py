@@ -22,9 +22,8 @@ def spawn_analysis_task_runner(task_id: str) -> subprocess.Popen:
     ]
     creationflags = 0
     if os.name == "nt":
-        creationflags = (
-            getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
-            | getattr(subprocess, "DETACHED_PROCESS", 0)
+        creationflags = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0) | getattr(
+            subprocess, "DETACHED_PROCESS", 0
         )
 
     log_fh = worker_log.open("a", encoding="utf-8")

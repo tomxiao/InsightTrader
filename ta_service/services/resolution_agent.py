@@ -9,11 +9,10 @@ from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.llm_clients.factory import create_llm_client
-
 from ta_service.models.resolution import AgentResolutionResult, ResolutionAgentContext
 from ta_service.services.stock_lookup_gateway import StockLookupGateway
+from tradingagents.default_config import DEFAULT_CONFIG
+from tradingagents.llm_clients.factory import create_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +95,9 @@ _FINAL_OUTPUT_PROMPT = """你现在需要基于已有对话和工具结果输出
 """
 
 _FINAL_OUTPUT_PROMPT_PARTIALS = {
-    "schema_json": json.dumps(AgentResolutionResult.model_json_schema(), ensure_ascii=False, indent=2),
+    "schema_json": json.dumps(
+        AgentResolutionResult.model_json_schema(), ensure_ascii=False, indent=2
+    ),
     "example_json": json.dumps(_FINAL_OUTPUT_EXAMPLE, ensure_ascii=False, indent=2),
 }
 
@@ -147,7 +148,9 @@ class ResolutionAgent:
 
     def _run_llm_agent(self, *, context: ResolutionAgentContext, llm: Any) -> AgentResolutionResult:
         tools = self._build_tools()
-        tools_by_name: dict[str, Callable[..., dict[str, Any]]] = {tool_item.name: tool_item for tool_item in tools}
+        tools_by_name: dict[str, Callable[..., dict[str, Any]]] = {
+            tool_item.name: tool_item for tool_item in tools
+        }
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -195,7 +198,9 @@ class ResolutionAgent:
         gateway = self.stock_lookup_gateway
 
         @tool
-        def search_stock_candidates(query: str, market_hints: list[str] | None = None, limit: int = 5) -> dict:
+        def search_stock_candidates(
+            query: str, market_hints: list[str] | None = None, limit: int = 5
+        ) -> dict:
             """根据干净的搜索词搜索股票候选。
             query 必须是提取后的 ticker、公司名或中文简称，不能包含原始用户句子中的动词或无关汉字。
             例如 "帮我看一下MU" → query="MU"；"分析英伟达" → query="英伟达"；"mu.us" → query="MU"。
@@ -322,7 +327,9 @@ def _parse_agent_resolution_result(response: Any) -> AgentResolutionResult:
     try:
         return AgentResolutionResult.model_validate(payload)
     except Exception:
-        logger.warning("resolution_agent_invalid_payload payload=%s", json.dumps(payload, ensure_ascii=False))
+        logger.warning(
+            "resolution_agent_invalid_payload payload=%s", json.dumps(payload, ensure_ascii=False)
+        )
         raise
 
 

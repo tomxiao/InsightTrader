@@ -22,7 +22,9 @@ def get_task_status(
     return response
 
 
-@router.post("/tasks", response_model=AnalysisTaskStatusResponse, status_code=status.HTTP_202_ACCEPTED)
+@router.post(
+    "/tasks", response_model=AnalysisTaskStatusResponse, status_code=status.HTTP_202_ACCEPTED
+)
 def create_task(
     payload: CreateAnalysisTaskRequest,
     current_user: MobileUser = Depends(get_current_user),

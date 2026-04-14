@@ -52,7 +52,9 @@ class AdminUserService:
         )
         return build_managed_user(document)
 
-    def update_user_status(self, user_id: str, payload: UpdateManagedUserStatusRequest) -> ManagedUser:
+    def update_user_status(
+        self, user_id: str, payload: UpdateManagedUserStatusRequest
+    ) -> ManagedUser:
         existing = self.user_repo.get_by_id(user_id)
         if not existing:
             raise HTTPException(

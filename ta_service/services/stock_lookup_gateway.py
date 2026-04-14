@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import json
 import logging
-from pathlib import Path
 import re
+from dataclasses import dataclass
+from pathlib import Path
 from threading import Lock
 from typing import Any
 
@@ -106,7 +106,9 @@ class StockLookupGateway:
         markets = _resolve_markets(query=query, market_hints=market_hints)
         logger.info(
             "stock_search_catalog query=%r ticker_hint=%r markets=%s",
-            query, ticker_hint, markets,
+            query,
+            ticker_hint,
+            markets,
         )
         scored: list[tuple[float, ResolutionCandidate]] = []
         errors: list[str] = []
@@ -147,7 +149,9 @@ class StockLookupGateway:
             if existing is None or (existing.score or 0) < score:
                 deduped[candidate.ticker] = candidate
 
-        ranked = sorted(deduped.values(), key=lambda candidate: (-(candidate.score or 0), candidate.ticker))
+        ranked = sorted(
+            deduped.values(), key=lambda candidate: (-(candidate.score or 0), candidate.ticker)
+        )
         result = ranked[:limit]
         logger.info(
             "stock_search_done query=%r result_count=%s top=%s",
@@ -236,8 +240,11 @@ class StockLookupGateway:
                     is_active=True,
                 )
             )
-        logger.info("finnhub_us_catalog_loaded source=%s count=%s",
-                    "csv" if local_csv.exists() else "api", len(entries))
+        logger.info(
+            "finnhub_us_catalog_loaded source=%s count=%s",
+            "csv" if local_csv.exists() else "api",
+            len(entries),
+        )
         return entries
 
     def _load_tushare_catalog(self, market: str) -> pd.DataFrame:

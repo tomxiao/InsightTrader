@@ -7,13 +7,13 @@ from ta_service.repos.conversations import ConversationRepository
 logger = logging.getLogger(__name__)
 
 _VALID_TRANSITIONS: dict[str, set[str]] = {
-    "idle":               {"collecting_inputs", "ready_to_analyze", "analyzing"},
-    "collecting_inputs":  {"collecting_inputs", "ready_to_analyze", "analyzing"},
-    "ready_to_analyze":   {"collecting_inputs", "analyzing"},
-    "analyzing":          {"report_ready", "failed"},
-    "report_ready":       {"report_explaining"},
-    "report_explaining":  {"report_explaining", "idle"},
-    "failed":             {"collecting_inputs", "idle"},
+    "idle": {"collecting_inputs", "ready_to_analyze", "analyzing"},
+    "collecting_inputs": {"collecting_inputs", "ready_to_analyze", "analyzing"},
+    "ready_to_analyze": {"collecting_inputs", "analyzing"},
+    "analyzing": {"report_ready", "failed"},
+    "report_ready": {"report_explaining"},
+    "report_explaining": {"report_explaining", "idle"},
+    "failed": {"collecting_inputs", "idle"},
 }
 
 _SENTINEL = object()
@@ -62,7 +62,9 @@ class ConversationStateMachine:
             )
 
         from_status = document.get("status", "idle")
-        self._check_transition(from_status=from_status, to_status=to_status, conversation_id=conversation_id)
+        self._check_transition(
+            from_status=from_status, to_status=to_status, conversation_id=conversation_id
+        )
 
         self._persist(
             conversation_id=conversation_id,
@@ -140,6 +142,8 @@ class ConversationStateMachine:
             set_pending_resolution=(pending_resolution is not _SENTINEL),
             confirmed_stock=None if confirmed_stock is _SENTINEL else confirmed_stock,
             set_confirmed_stock=(confirmed_stock is not _SENTINEL),
-            confirmed_analysis_prompt=None if confirmed_analysis_prompt is _SENTINEL else confirmed_analysis_prompt,
+            confirmed_analysis_prompt=None
+            if confirmed_analysis_prompt is _SENTINEL
+            else confirmed_analysis_prompt,
             set_confirmed_analysis_prompt=(confirmed_analysis_prompt is not _SENTINEL),
         )

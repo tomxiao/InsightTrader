@@ -1,23 +1,23 @@
 from __future__ import annotations
 
-from dataclasses import dataclass, field
 import logging
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
-from ta_service.callbacks.stats_handler import StatsCallbackHandler
 from ta_service.adapters.result_mapper import (
     extract_executive_summary,
     save_report_to_disk,
 )
+from ta_service.callbacks.stats_handler import StatsCallbackHandler
 from ta_service.config.settings import Settings
 from ta_service.runtime.run_context import RunContext, build_run_context
 from ta_service.runtime.status_mapper import resolve_stage_message
+from tradingagents.dataflows.config import clear_runtime_context, set_runtime_context
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.observability import StageEventTracker
-from tradingagents.dataflows.config import clear_runtime_context, set_runtime_context
 
 ANALYST_ORDER = ["market", "social", "news", "fundamentals"]
 ANALYST_STAGE_MAP = {
@@ -36,7 +36,9 @@ class RunnerRequest:
     trade_date: str
     selected_analysts: list[str]
     on_stage_change: Callable[[str], None] | None = field(default=None, compare=False, hash=False)
-    on_node_change: Callable[[str, str], None] | None = field(default=None, compare=False, hash=False)
+    on_node_change: Callable[[str, str], None] | None = field(
+        default=None, compare=False, hash=False
+    )
 
 
 @dataclass(frozen=True)
@@ -209,19 +211,23 @@ class TradingAgentsRunner:
             else:
                 snapshot[stage_id] = "pending"
 
-        if active_set and all(snapshot.get(ANALYST_STAGE_MAP[key][0]) == "completed" for key in active_set):
+        if active_set and all(
+            snapshot.get(ANALYST_STAGE_MAP[key][0]) == "completed" for key in active_set
+        ):
             research_done = bool(state.get("investment_debate_state", {}).get("judge_decision"))
             snapshot["research.debate"] = "completed" if research_done else "in_progress"
             trader_done = bool(state.get("trader_investment_plan"))
-            snapshot["trader.plan"] = "completed" if trader_done else (
-                "in_progress" if research_done else "pending"
+            snapshot["trader.plan"] = (
+                "completed" if trader_done else ("in_progress" if research_done else "pending")
             )
             risk_done = bool(state.get("risk_debate_state", {}).get("judge_decision"))
-            snapshot["risk.debate"] = "completed" if risk_done else (
-                "in_progress" if trader_done else "pending"
+            snapshot["risk.debate"] = (
+                "completed" if risk_done else ("in_progress" if trader_done else "pending")
             )
-            snapshot["portfolio.decision"] = "completed" if risk_done else (
-                "in_progress" if state.get("final_trade_decision") else "pending"
+            snapshot["portfolio.decision"] = (
+                "completed"
+                if risk_done
+                else ("in_progress" if state.get("final_trade_decision") else "pending")
             )
         else:
             snapshot["research.debate"] = "pending"

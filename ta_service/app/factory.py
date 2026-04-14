@@ -5,8 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from ta_service.api.routes.analysis import router as analysis_router
 from ta_service.api.routes.admin_users import router as admin_users_router
+from ta_service.api.routes.analysis import router as analysis_router
 from ta_service.api.routes.auth import router as auth_router
 from ta_service.api.routes.conversations import router as conversations_router
 from ta_service.api.routes.health import router as health_router

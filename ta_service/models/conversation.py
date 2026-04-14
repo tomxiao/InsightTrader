@@ -7,6 +7,7 @@ from ta_service.models.message_types import MessageType
 
 class TaskProgress(BaseModel):
     """分析任务进度信息，仅在会话状态为 analyzing 时由后端填充。"""
+
     currentStep: str | None = None
     message: str | None = None
     elapsedTime: int | None = None
