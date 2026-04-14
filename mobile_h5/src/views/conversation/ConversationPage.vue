@@ -37,16 +37,20 @@ const sendingLoading = ref(false)
 const promptModel = ref('')
 const conversationBodyRef = ref<HTMLElement | null>(null)
 const conversationEndRef = ref<HTMLElement | null>(null)
+const conversationInputRef = ref<HTMLElement | null>(null)
+const isHeaderCompact = ref(false)
+const showScrollToBottom = ref(false)
+const skipAutoStickMessageId = ref<string | null>(null)
 
 const currentConversation = computed(() => conversationStore.currentConversation)
 const currentMessages = computed(() => conversationStore.currentMessages)
 const isAnalyzing = computed(() => currentConversation.value.status === 'analyzing')
 const taskProgress = computed(() => currentConversation.value.taskProgress ?? null)
 
-const isNearConversationBottom = () => {
+const isNearConversationBottom = (threshold = 96) => {
   const element = conversationBodyRef.value
   if (!element) return true
-  return element.scrollHeight - element.scrollTop - element.clientHeight < 96
+  return element.scrollHeight - element.scrollTop - element.clientHeight < threshold
 }
 
 const scrollConversationToBottom = (behavior: ScrollBehavior = 'auto') => {
@@ -59,6 +63,31 @@ const scrollConversationToBottom = (behavior: ScrollBehavior = 'auto') => {
   const element = conversationBodyRef.value
   if (element) {
     element.scrollTo({ top: element.scrollHeight, behavior })
+  }
+}
+
+const getComposerOffset = () => {
+  const composerHeight = conversationInputRef.value?.getBoundingClientRect().height ?? 72
+  return composerHeight + 12
+}
+
+const scrollMessageAboveComposer = (messageId: string, behavior: ScrollBehavior = 'smooth') => {
+  const body = conversationBodyRef.value
+  if (!body) return
+
+  const message = body.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)
+  if (!message) return
+
+  const bodyRect = body.getBoundingClientRect()
+  const messageRect = message.getBoundingClientRect()
+  const desiredBottom = bodyRect.bottom - getComposerOffset()
+  const delta = messageRect.bottom - desiredBottom
+
+  if (delta > 0) {
+    body.scrollTo({
+      top: body.scrollTop + delta,
+      behavior,
+    })
   }
 }
 
@@ -89,6 +118,16 @@ const conversationStatusLabelMap: Record<ConversationSummary['status'], string> 
   failed: '需要重试'
 }
 
+const conversationHeaderSubtitleMap: Record<ConversationSummary['status'], string> = {
+  idle: '输入标的后开始分析',
+  collecting_inputs: '补充信息后继续',
+  ready_to_analyze: '可以开始分析',
+  analyzing: '正在分析',
+  report_ready: '可继续追问',
+  report_explaining: '继续解读',
+  failed: '分析未完成'
+}
+
 const latestTaskStatusId = computed(() => {
   if (!isAnalyzing.value) return null
   const messages = currentMessages.value
@@ -104,9 +143,13 @@ const isFollowupMode = computed(() =>
   ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
 )
 
+const canSubmitPrompt = computed(() =>
+  Boolean(promptModel.value.trim()) && !sendingLoading.value && !isAnalyzing.value
+)
+
 
 const currentConversationStatusLabel = computed(
-  () => conversationStatusLabelMap[currentConversation.value.status] || '待开始'
+  () => conversationHeaderSubtitleMap[currentConversation.value.status] || '输入标的后开始分析'
 )
 
 const accountDisplayName = computed(() => authStore.user?.displayName || authStore.user?.username || '未登录')
@@ -268,6 +311,7 @@ const submitPrompt = async () => {
 
   const optimisticId = `optimistic-user-${Date.now()}`
   const thinkingId = `optimistic-thinking-${Date.now()}`
+  skipAutoStickMessageId.value = thinkingId
 
   conversationStore.appendMessages([
     {
@@ -285,6 +329,10 @@ const submitPrompt = async () => {
       createdAt: new Date().toISOString(),
     },
   ])
+
+  await nextTick()
+  scrollMessageAboveComposer(optimisticId, 'smooth')
+  syncConversationChromeState()
 
   try {
     if (isFollowupMode.value) {
@@ -442,6 +490,23 @@ const renderMarkdown = (text: string): string =>
     USE_PROFILES: { html: true }
   })
 
+const syncConversationChromeState = () => {
+  const element = conversationBodyRef.value
+  if (!element) {
+    isHeaderCompact.value = false
+    showScrollToBottom.value = false
+    return
+  }
+
+  const nearBottom = isNearConversationBottom()
+  isHeaderCompact.value = element.scrollTop > 8
+  showScrollToBottom.value = currentMessages.value.length > 0 && !nearBottom
+}
+
+const handleConversationScroll = () => {
+  syncConversationChromeState()
+}
+
 watch(
   () => conversationStore.isDrawerOpen,
   open => {
@@ -453,27 +518,47 @@ watch(
 
 watch(
   [() => currentConversation.value.id, () => currentMessages.value[currentMessages.value.length - 1]?.id],
-  async ([nextConversationId], [prevConversationId]) => {
+  async ([nextConversationId, nextLatestMessageId], [prevConversationId]) => {
     const switchedConversation = nextConversationId !== prevConversationId
-    const shouldStickToBottom = switchedConversation || isNearConversationBottom()
+    const shouldStickToBottom = switchedConversation || isNearConversationBottom(220)
 
     await nextTick()
+
+    if (nextLatestMessageId && skipAutoStickMessageId.value === nextLatestMessageId) {
+      skipAutoStickMessageId.value = null
+      syncConversationChromeState()
+      return
+    }
 
     if (shouldStickToBottom) {
       scrollConversationToBottom(switchedConversation ? 'auto' : 'smooth')
     }
+
+    syncConversationChromeState()
   },
   { flush: 'pre' }
 )
 
-onMounted(bootstrap)
+onMounted(async () => {
+  await bootstrap()
+  await nextTick()
+  syncConversationChromeState()
+})
 </script>
 
 <template>
   <MobilePageLayout :title="conversationStore.currentTitle" :with-content-padding="false">
     <template #header>
-      <div class="conversation-page__header">
-        <van-button plain size="small" class="conversation-page__icon-button" @click="conversationStore.setDrawerOpen(true)">
+      <div
+        class="conversation-page__header"
+        :class="{ 'conversation-page__header--compact': isHeaderCompact }"
+      >
+        <van-button
+          plain
+          size="small"
+          class="conversation-page__icon-button"
+          @click="conversationStore.setDrawerOpen(true)"
+        >
           <van-icon name="wap-nav" />
         </van-button>
         <div class="conversation-page__header-main">
@@ -503,7 +588,7 @@ onMounted(bootstrap)
                 </span>
               </button>
             </div>
-            <p class="mobile-muted">在同一个线程里发起分析、查看报告、继续追问。</p>
+            <p class="mobile-muted">围绕同一只股票，持续分析，随时追问。</p>
           </div>
 
           <van-button block round type="primary" @click="createConversation">开始新对话</van-button>
@@ -568,6 +653,7 @@ onMounted(bootstrap)
         ref="conversationBodyRef"
         class="conversation-page__body"
         :class="{ 'conversation-page__body--locked': conversationStore.isDrawerOpen }"
+        @scroll.passive="handleConversationScroll"
       >
         <div v-if="!currentMessages.length" class="conversation-empty">
           <div class="conversation-empty__hero">
@@ -593,6 +679,7 @@ onMounted(bootstrap)
             v-for="message in currentMessages"
             :key="message.id"
             class="conversation-message"
+            :data-message-id="message.id"
             :class="[
               `conversation-message--${message.role}`,
               `conversation-message--${message.messageType}`
@@ -764,20 +851,41 @@ onMounted(bootstrap)
           <div ref="conversationEndRef" class="conversation-stream__end" aria-hidden="true" />
         </div>
       </div>
+      <div v-if="showScrollToBottom" class="conversation-page__scroll-bottom-track" aria-hidden="true">
+        <button
+          class="conversation-page__scroll-bottom"
+          type="button"
+          aria-label="跳到底部"
+          @click="scrollConversationToBottom('smooth')"
+        >
+          <van-icon name="down" />
+        </button>
+      </div>
     </div>
 
     <template #footer>
-      <div class="conversation-input">
+      <div ref="conversationInputRef" class="conversation-input">
         <div class="conversation-input__shell">
           <div class="conversation-input__row">
             <van-field
               v-model="promptModel"
-              rows="3"
-              autosize
+              rows="1"
+              :autosize="{ minHeight: 24, maxHeight: 112 }"
               type="textarea"
+              placeholder="输入股票、公司，或继续追问"
               @keydown.enter.exact.prevent="submitPrompt"
             />
-            <van-button round type="primary" :loading="sendingLoading || isAnalyzing" @click="submitPrompt">发送</van-button>
+            <van-button
+              round
+              type="primary"
+              class="conversation-input__send"
+              :class="{ 'is-ready': canSubmitPrompt }"
+              :loading="sendingLoading"
+              :disabled="!canSubmitPrompt"
+              @click="submitPrompt"
+            >
+              发送
+            </van-button>
           </div>
         </div>
       </div>
@@ -788,6 +896,7 @@ onMounted(bootstrap)
 <style scoped>
 .conversation-page {
   flex: 1;
+  position: relative;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -796,23 +905,35 @@ onMounted(bootstrap)
 .conversation-page__header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 10px 16px 8px;
+  gap: 10px;
+  padding: 8px clamp(24px, 6vw, 40px) 6px;
+  transition: padding 0.18s ease, gap 0.18s ease;
+}
+
+.conversation-page__header--compact {
+  gap: 8px;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 .conversation-page__header :deep(.van-button) {
-  min-width: 42px;
-  width: 42px;
-  height: 42px;
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border-radius: 21px;
-  background: rgba(255, 255, 255, 0.045);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
   color: var(--mobile-color-text-secondary);
   border-color: rgba(255, 255, 255, 0.08);
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
 }
 
 .conversation-page__icon-button :deep(.van-icon) {
-  font-size: 19px;
+  font-size: 18px;
 }
 
 .conversation-page__header-main {
@@ -821,7 +942,7 @@ onMounted(bootstrap)
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: 1px;
 }
 
 .conversation-page__header-title {
@@ -829,15 +950,26 @@ onMounted(bootstrap)
   text-overflow: ellipsis;
   white-space: nowrap;
   text-align: left;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
-  line-height: 1.2;
+  line-height: 1.25;
+  transition: font-size 0.18s ease, line-height 0.18s ease;
+}
+
+.conversation-page__header--compact .conversation-page__header-title {
+  font-size: 14px;
 }
 
 .conversation-page__header-subtitle {
   color: var(--mobile-color-text-tertiary);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1.2;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.conversation-page__header--compact .conversation-page__header-subtitle {
+  opacity: 0.88;
+  transform: translateY(-0.5px);
 }
 
 .conversation-page__body {
@@ -854,6 +986,39 @@ onMounted(bootstrap)
 
 .conversation-page__body--locked {
   overflow: hidden;
+}
+
+.conversation-page__scroll-bottom-track {
+  position: absolute;
+  left: 50%;
+  bottom: calc(58px + var(--mobile-safe-bottom));
+  z-index: 6;
+  width: calc(100% - (2 * clamp(24px, 6vw, 40px)));
+  max-width: 480px;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.conversation-page__scroll-bottom {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(27, 29, 35, 0.92);
+  color: var(--mobile-color-text-secondary);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.2);
+  backdrop-filter: blur(10px);
+  transform: translateX(50%);
+}
+
+.conversation-page__scroll-bottom :deep(.van-icon) {
+  font-size: 14px;
 }
 
 .conversation-empty {
@@ -955,7 +1120,8 @@ onMounted(bootstrap)
 
 .conversation-message--assistant .conversation-bubble {
   max-width: 100%;
-  padding: 2px 0;
+  box-sizing: border-box;
+  padding: 2px 14px 2px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -963,7 +1129,8 @@ onMounted(bootstrap)
 
 .conversation-message--system .conversation-bubble {
   max-width: 100%;
-  padding: 2px 0;
+  box-sizing: border-box;
+  padding: 2px 14px 2px 0;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -1090,12 +1257,12 @@ onMounted(bootstrap)
 
 .conversation-summary--markdown {
   white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 
   :deep(p) {
-    margin: 0 0 12px;
-    line-height: 1.85;
+    margin: 0 0 10px;
+    line-height: 1.78;
     &:last-child {
       margin-bottom: 0;
     }
@@ -1106,30 +1273,30 @@ onMounted(bootstrap)
   :deep(h3) {
     font-weight: 700;
     line-height: 1.45;
-    margin: 20px 0 8px;
+    margin: 16px 0 6px;
   }
 
   :deep(h1) {
-    font-size: 18px;
+    font-size: 17px;
   }
 
   :deep(h2) {
-    font-size: 16px;
+    font-size: 15px;
   }
 
   :deep(h3) {
-    font-size: 15px;
+    font-size: 14px;
   }
 
   :deep(ul),
   :deep(ol) {
     padding-left: 20px;
-    margin: 8px 0 12px;
+    margin: 6px 0 10px;
   }
 
   :deep(li) {
-    margin: 4px 0;
-    line-height: 1.75;
+    margin: 3px 0;
+    line-height: 1.7;
   }
 
   :deep(strong) {
@@ -1137,11 +1304,11 @@ onMounted(bootstrap)
   }
 
   :deep(blockquote) {
-    margin: 14px 0;
-    padding: 10px 14px;
-    border-left: 3px solid rgba(93, 139, 255, 0.55);
-    border-radius: 0 14px 14px 0;
-    background: rgba(93, 139, 255, 0.08);
+    margin: 12px 0;
+    padding: 8px 12px;
+    border-left: 2px solid rgba(93, 139, 255, 0.42);
+    border-radius: 0 12px 12px 0;
+    background: rgba(93, 139, 255, 0.05);
     color: var(--mobile-color-text-secondary);
     font-size: 13px;
   }
@@ -1153,18 +1320,18 @@ onMounted(bootstrap)
   }
 
   :deep(code) {
-    padding: 2px 6px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.08);
+    padding: 1px 6px;
+    border-radius: 7px;
+    background: rgba(255, 255, 255, 0.06);
     font-size: 0.92em;
   }
 
   :deep(pre) {
     overflow-x: auto;
-    margin: 14px 0;
-    padding: 12px 14px;
-    border-radius: 16px;
-    background: rgba(0, 0, 0, 0.28);
+    margin: 12px 0;
+    padding: 11px 13px;
+    border-radius: 14px;
+    background: rgba(0, 0, 0, 0.24);
     border: 1px solid rgba(255, 255, 255, 0.06);
   }
 
@@ -1176,7 +1343,7 @@ onMounted(bootstrap)
   :deep(table) {
     width: 100%;
     border-collapse: collapse;
-    margin: 14px 0;
+    margin: 12px 0;
     font-size: 13px;
   }
 
@@ -1197,8 +1364,8 @@ onMounted(bootstrap)
 .conversation-summary__toggle {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 100%;
+  justify-content: flex-start;
+  width: fit-content;
   margin-top: 10px;
   padding: 0;
   background: none;
@@ -1232,8 +1399,8 @@ onMounted(bootstrap)
 
 .conversation-summary__guide-text {
   margin: 0 0 10px;
-  font-size: 13px;
-  color: var(--van-text-color-2, #646566);
+  font-size: 12px;
+  color: var(--mobile-color-text-secondary);
   line-height: 1.5;
 }
 
@@ -1247,16 +1414,16 @@ onMounted(bootstrap)
   display: inline-flex;
   align-items: center;
   padding: 5px 12px;
-  background: var(--van-background-2, #f7f8fa);
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 16px;
   font-size: 12px;
-  color: var(--van-text-color, #323233);
+  color: var(--mobile-color-text-secondary);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s;
 
   &:active {
-    background: var(--van-primary-color-light, #e8f3ff);
+    background: rgba(93, 139, 255, 0.12);
     border-color: var(--van-primary-color, #1989fa);
     color: var(--van-primary-color, #1989fa);
   }
@@ -1268,15 +1435,15 @@ onMounted(bootstrap)
 }
 
 .conversation-inline-card--summary {
-  padding: 14px 16px 10px;
-  border: 1px solid rgba(93, 139, 255, 0.14);
+  padding: 12px 14px 8px;
+  border: 1px solid rgba(93, 139, 255, 0.1);
   border-radius: 18px;
-  background: rgba(93, 139, 255, 0.06);
+  background: rgba(93, 139, 255, 0.04);
 }
 
 .conversation-inline-card__eyebrow {
   display: inline-block;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--mobile-color-text-tertiary);
   font-size: 11px;
   font-weight: 600;
@@ -1289,8 +1456,8 @@ onMounted(bootstrap)
 }
 
 .conversation-inline-card__title {
-  font-size: 16px;
-  line-height: 1.5;
+  font-size: 15px;
+  line-height: 1.45;
 }
 
 .conversation-inline-card__description {
@@ -1301,6 +1468,7 @@ onMounted(bootstrap)
 
 .conversation-summary--result,
 .conversation-bubble__markdown {
+  box-sizing: border-box;
   color: var(--mobile-color-text);
   font-size: 15px;
   margin-top: 8px;
@@ -1308,8 +1476,8 @@ onMounted(bootstrap)
 
 .conversation-summary--result :deep(p:first-child),
 .conversation-bubble__markdown :deep(p:first-child) {
-  font-size: 16px;
-  line-height: 1.85;
+  font-size: 15px;
+  line-height: 1.8;
   color: rgba(255, 255, 255, 0.96);
 }
 
@@ -1368,30 +1536,79 @@ onMounted(bootstrap)
 }
 
 .conversation-input__shell {
-  padding: 8px 8px 6px;
-  border-radius: 30px;
+  padding: 6px;
+  border-radius: 26px;
   border: 1px solid var(--mobile-color-border);
   background: rgba(27, 29, 35, 0.98);
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.14);
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+
+.conversation-input__shell:focus-within {
+  border-color: rgba(93, 139, 255, 0.28);
+  background: rgba(27, 29, 35, 0.99);
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.18);
 }
 
 .conversation-input__row {
   display: flex;
   align-items: flex-end;
-  gap: 10px;
+  gap: 8px;
 }
 
 .conversation-input :deep(.van-field) {
   flex: 1;
-  padding: 8px 12px;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.018);
+  padding: 7px 12px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.02);
+  transition: background 0.18s ease;
+}
+
+.conversation-input__shell:focus-within :deep(.van-field) {
+  background: rgba(255, 255, 255, 0.032);
 }
 
 .conversation-input :deep(textarea) {
-  min-height: 44px;
-  line-height: 1.5;
+  min-height: 24px;
+  max-height: 112px;
+  line-height: 1.45;
   font-size: 16px;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.conversation-input :deep(textarea::placeholder) {
+  color: var(--mobile-color-text-tertiary);
+}
+
+.conversation-input__send {
+  min-width: 56px;
+  height: 36px;
+  padding: 0 14px;
+  opacity: 0.64;
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.conversation-input__send.is-ready {
+  opacity: 1;
+}
+
+.conversation-input__send.is-ready:active {
+  transform: translateY(1px);
+}
+
+.conversation-input :deep(.conversation-input__send.van-button--disabled) {
+  opacity: 1;
+}
+
+.conversation-input :deep(.conversation-input__send .van-button__text) {
+  font-size: 14px;
 }
 
 
