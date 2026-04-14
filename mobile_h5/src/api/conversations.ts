@@ -21,7 +21,7 @@ export const conversationsApi = {
   },
   postMessage(conversationId: string, payload: PostConversationMessageRequest) {
     return request
-      .post<PostConversationMessageResponse>(`/conversations/${conversationId}/messages`, payload)
+      .post<PostConversationMessageResponse>(`/conversations/${conversationId}/messages`, payload, { timeout: 60000 })
       .then(response => response.data)
   },
   resolve(conversationId: string, payload: ResolutionRequest) {
@@ -35,6 +35,6 @@ export const conversationsApi = {
       .then(response => response.data)
   },
   deleteConversation(conversationId: string) {
-    return request.delete(`/conversations/${conversationId}`)
+    return request.delete(`/conversations/${conversationId}`).then(response => response.data)
   }
 }

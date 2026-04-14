@@ -1,8 +1,19 @@
 # InsightTrader 初始部署手册
 
 目标服务器：Ubuntu 24.04 LTS（阿里云 ECS）  
-域名：`93901.pro`（前端 + 后端 API，通过路径 `/api/` 区分）  
-SSH 登录：`ssh -i C:\Users\tomxiao\.ssh\InsightTrader.pem root@93901.pro`
+域名：`93901.pro`（前端 + 后端 API，通过路径 `/api/` 区分）
+
+## 前置：设置本机变量
+
+> 每次打开新 PowerShell 终端后执行一次，后续命令直接复制粘贴。
+
+```powershell
+# 项目根目录（根据本机实际路径修改）
+$REPO = ".\"
+
+# SSH 私钥路径（根据本机实际路径修改）
+$PEM  = "$env:USERPROFILE\.ssh\InsightTrader.pem"
+```
 
 ---
 
@@ -28,9 +39,9 @@ SSH 登录：`ssh -i C:\Users\tomxiao\.ssh\InsightTrader.pem root@93901.pro`
 
 ### 1-1 安装 Docker
 
-```bash
+```powershell
 # 登录服务器
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro
+ssh -i $PEM root@93901.pro
 
 # 卸载可能冲突的旧包
 apt remove -y docker.io docker-compose docker-compose-v2 containerd runc 2>/dev/null || true
@@ -105,7 +116,7 @@ python -m pip install paramiko
 
 ```powershell
 # 在项目根目录执行
-cd D:\CodeBase\InsightTrader
+cd $REPO
 python deploy/upload.py
 ```
 
@@ -121,13 +132,13 @@ python deploy/upload.py
 
 ```powershell
 # 上传脚本到服务器
-scp -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" deploy\write_env.sh root@93901.pro:/root/write_env.sh
+scp -i $PEM deploy\write_env.sh root@93901.pro:/root/write_env.sh
 
 # 在服务器执行，写入 .env
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "bash /root/write_env.sh"
+ssh -i $PEM root@93901.pro "bash /root/write_env.sh"
 
 # 验证写入成功
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "grep TA_SERVICE_ENV /opt/insighttrader/.env"
+ssh -i $PEM root@93901.pro "grep TA_SERVICE_ENV /opt/insighttrader/.env"
 ```
 
 期望输出：`TA_SERVICE_ENV=production`
@@ -153,13 +164,13 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "grep TA_SERVICE
 
 ```powershell
 # 构建镜像（耗时较长，请耐心等待）
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml build"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml build"
 
 # 启动所有容器
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml up -d"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml up -d"
 
 # 等待 healthcheck 通过（start_period 为 20s，等待 30s）
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "sleep 30 && cd /opt/insighttrader && docker compose -f docker-compose.prod.yml ps && curl -s http://127.0.0.1:8100/health"
+ssh -i $PEM root@93901.pro "sleep 30 && cd /opt/insighttrader && docker compose -f docker-compose.prod.yml ps && curl -s http://127.0.0.1:8100/health"
 ```
 
 期望输出：三个容器均为 `Up (healthy)`，`curl` 返回 `{"status":"ok"}`。
@@ -172,14 +183,14 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "sleep 30 && cd 
 
 ```powershell
 # 进入前端目录，安装依赖（首次或 package.json 有变更时执行）
-cd D:\CodeBase\InsightTrader\mobile_h5
+cd $REPO\mobile_h5
 npm install
 
 # 构建生产包（产物在 mobile_h5/dist/）
 npm run build
 
 # 上传 dist/ 到服务器
-cd D:\CodeBase\InsightTrader
+cd $REPO
 python deploy/upload_dist.py
 ```
 
@@ -189,10 +200,10 @@ python deploy/upload_dist.py
 
 ```powershell
 # 部署 Nginx 配置、启用站点、重载
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cp /opt/insighttrader/deploy/nginx.conf /etc/nginx/sites-available/insighttrader && ln -sf /etc/nginx/sites-available/insighttrader /etc/nginx/sites-enabled/insighttrader && rm -f /etc/nginx/sites-enabled/default && nginx -t && systemctl reload nginx"
+ssh -i $PEM root@93901.pro "cp /opt/insighttrader/deploy/nginx.conf /etc/nginx/sites-available/insighttrader && ln -sf /etc/nginx/sites-available/insighttrader /etc/nginx/sites-enabled/insighttrader && rm -f /etc/nginx/sites-enabled/default && nginx -t && systemctl reload nginx"
 
 # 验证前端可访问
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "curl -s -o /dev/null -w 'Nginx HTTP %{http_code}' http://127.0.0.1/"
+ssh -i $PEM root@93901.pro "curl -s -o /dev/null -w 'Nginx HTTP %{http_code}' http://127.0.0.1/"
 ```
 
 期望输出：`Nginx HTTP 200`
@@ -203,15 +214,15 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "curl -s -o /dev
 
 ```powershell
 # 管理员
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username admin --password 800808aa --role admin"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username admin --password 800808aa --role admin"
 
 # 普通用户（逐个执行，避免 PowerShell 变量转义问题）
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username fengj --password 11223344 --role user"
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username lijx --password 11223344 --role user"
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username lvz --password 11223344 --role user"
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username lubx --password 11223344 --role user"
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username ziza --password 11223344 --role user"
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username kb --password 11223344 --role user"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username fengj --password 11223344 --role user"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username lijx --password 11223344 --role user"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username lvz --password 11223344 --role user"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username lubx --password 11223344 --role user"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username ziza --password 11223344 --role user"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml exec ta_service python ta_service/scripts/create_user.py --username kb --password 11223344 --role user"
 ```
 
 ---
@@ -220,10 +231,10 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insight
 
 ```powershell
 # 上传 systemd service 文件
-scp -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" deploy\insighttrader.service root@93901.pro:/etc/systemd/system/insighttrader.service
+scp -i $PEM deploy\insighttrader.service root@93901.pro:/etc/systemd/system/insighttrader.service
 
 # 启用开机自启（不立即启动，容器已在运行）
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "systemctl daemon-reload && systemctl enable insighttrader"
+ssh -i $PEM root@93901.pro "systemctl daemon-reload && systemctl enable insighttrader"
 ```
 
 ---
@@ -231,29 +242,10 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "systemctl daemo
 ## 验收检查
 
 ```powershell
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml ps && curl -s http://127.0.0.1:8100/health && curl -s -o /dev/null -w 'Nginx HTTP %{http_code}' http://127.0.0.1/"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml ps && curl -s http://127.0.0.1:8100/health && curl -s -o /dev/null -w 'Nginx HTTP %{http_code}' http://127.0.0.1/"
 ```
 
 期望：三容器 `Up (healthy)`，`{"status":"ok"}`，`Nginx HTTP 200`。
-
----
-
-## 后续更新部署
-
-```powershell
-# 1. 上传最新后端代码
-cd D:\CodeBase\InsightTrader
-python deploy/upload.py
-
-# 2. 重建并重启后端容器（后端代码有变更时）
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml build ta_service && docker compose -f docker-compose.prod.yml up -d ta_service"
-
-# 3. 更新前端（前端代码有变更时）
-cd D:\CodeBase\InsightTrader\mobile_h5
-npm run build
-cd D:\CodeBase\InsightTrader
-python deploy/upload_dist.py
-```
 
 ---
 
@@ -290,14 +282,14 @@ docker stats
 
 ```powershell
 # 创建 ssl 目录
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "mkdir -p /etc/nginx/ssl"
+ssh -i $PEM root@93901.pro "mkdir -p /etc/nginx/ssl"
 
 # 上传证书和私钥
-scp -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" deploy\cert\93901.pro.pem root@93901.pro:/etc/nginx/ssl/93901.pro.pem
-scp -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" deploy\cert\93901.pro.key root@93901.pro:/etc/nginx/ssl/93901.pro.key
+scp -i $PEM deploy\cert\93901.pro.pem root@93901.pro:/etc/nginx/ssl/93901.pro.pem
+scp -i $PEM deploy\cert\93901.pro.key root@93901.pro:/etc/nginx/ssl/93901.pro.key
 
 # 设置私钥权限
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "chmod 600 /etc/nginx/ssl/93901.pro.key && chmod 644 /etc/nginx/ssl/93901.pro.pem"
+ssh -i $PEM root@93901.pro "chmod 600 /etc/nginx/ssl/93901.pro.key && chmod 644 /etc/nginx/ssl/93901.pro.pem"
 ```
 
 ### 2. 部署 HTTPS Nginx 配置
@@ -305,19 +297,19 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "chmod 600 /etc/
 `deploy/nginx.conf` 已是 HTTPS 版（443 + HTTP 301 重定向），直接覆盖部署：
 
 ```powershell
-scp -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" deploy\nginx.conf root@93901.pro:/opt/insighttrader/deploy/nginx.conf
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cp /opt/insighttrader/deploy/nginx.conf /etc/nginx/sites-available/insighttrader && ufw allow 443 && nginx -t && systemctl reload nginx"
+scp -i $PEM deploy\nginx.conf root@93901.pro:/opt/insighttrader/deploy/nginx.conf
+ssh -i $PEM root@93901.pro "cp /opt/insighttrader/deploy/nginx.conf /etc/nginx/sites-available/insighttrader && ufw allow 443 && nginx -t && systemctl reload nginx"
 ```
 
 ### 3. 更新 CORS 和前端 API 地址
 
 ```powershell
 # 更新服务器 .env（CORS 改为 https）
-scp -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" deploy\write_env.sh root@93901.pro:/root/write_env.sh
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "bash /root/write_env.sh"
+scp -i $PEM deploy\write_env.sh root@93901.pro:/root/write_env.sh
+ssh -i $PEM root@93901.pro "bash /root/write_env.sh"
 
 # 重启 ta_service 使新 CORS 生效
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml up -d ta_service"
+ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-compose.prod.yml up -d ta_service"
 ```
 
 ### 4. 重建前端并上传
@@ -325,16 +317,16 @@ ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "cd /opt/insight
 `mobile_h5/.env.production` 中 `VITE_API_BASE_URL` 已是 `https://93901.pro/api`：
 
 ```powershell
-cd D:\CodeBase\InsightTrader\mobile_h5
+cd $REPO\mobile_h5
 npm run build
-cd D:\CodeBase\InsightTrader
+cd $REPO
 python deploy/upload_dist.py
 ```
 
 ### 5. 验收
 
 ```powershell
-ssh -i "C:\Users\tomxiao\.ssh\InsightTrader.pem" root@93901.pro "curl -sk -o /dev/null -w 'HTTPS %{http_code}' https://127.0.0.1/ && curl -s -o /dev/null -w 'HTTP->HTTPS redirect %{http_code}' http://93901.pro/"
+ssh -i $PEM root@93901.pro "curl -sk -o /dev/null -w 'HTTPS %{http_code}' https://127.0.0.1/ && curl -s -o /dev/null -w 'HTTP->HTTPS redirect %{http_code}' http://93901.pro/"
 ```
 
 期望：`HTTPS 200`，`HTTP->HTTPS redirect 301`。

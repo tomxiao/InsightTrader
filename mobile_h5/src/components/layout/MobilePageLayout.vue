@@ -48,5 +48,9 @@ defineProps<{
 .mobile-page__shell--flush {
   width: 100%;
   max-width: none;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 </style>

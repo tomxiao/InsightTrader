@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import axios from 'axios'
-import { reactive, ref } from 'vue'
+import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
 
@@ -12,10 +12,96 @@ const router = useRouter()
 const authStore = useAuthStore()
 const loading = ref(false)
 const showPassword = ref(false)
+const keyboardActive = ref(false)
+const loginPageRef = ref<HTMLElement | null>(null)
+let focusResetFrame = 0
 
 const form = reactive({
   username: '',
   password: ''
+})
+
+const resetWindowScroll = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.scrollTo(0, 0)
+  document.documentElement.scrollTop = 0
+  document.body.scrollTop = 0
+}
+
+const focusField = (fieldName: 'login-identity' | 'login-secret', event?: Event) => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  const target = event?.target
+  if (target instanceof HTMLElement && target.closest('.login-page__field-toggle')) {
+    return
+  }
+
+  event?.preventDefault()
+
+  const input = loginPageRef.value?.querySelector<HTMLInputElement>(`input[name="${fieldName}"]`)
+  if (!input) {
+    return
+  }
+
+  input.focus({ preventScroll: true })
+  const end = input.value.length
+  input.setSelectionRange(end, end)
+
+  resetWindowScroll()
+  cancelAnimationFrame(focusResetFrame)
+  focusResetFrame = window.requestAnimationFrame(() => {
+    resetWindowScroll()
+  })
+}
+
+const scheduleFocusReset = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  cancelAnimationFrame(focusResetFrame)
+  focusResetFrame = window.requestAnimationFrame(() => {
+    resetWindowScroll()
+  })
+}
+
+const handleFocusIn = () => {
+  keyboardActive.value = true
+  scheduleFocusReset()
+}
+
+const handleFocusOut = () => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  window.setTimeout(() => {
+    keyboardActive.value = document.activeElement instanceof HTMLInputElement
+  }, 0)
+}
+
+onMounted(() => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  document.addEventListener('focusin', handleFocusIn)
+  document.addEventListener('focusout', handleFocusOut)
+})
+
+onUnmounted(() => {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  cancelAnimationFrame(focusResetFrame)
+  document.removeEventListener('focusin', handleFocusIn)
+  document.removeEventListener('focusout', handleFocusOut)
 })
 
 const resolveLoginErrorMessage = (error: unknown) => {
@@ -58,7 +144,7 @@ const submit = async () => {
 
 <template>
   <MobilePageLayout :with-content-padding="false">
-    <section class="login-page">
+    <section ref="loginPageRef" class="login-page" :class="{ 'is-keyboard-active': keyboardActive }">
       <div class="login-page__content">
         <div class="login-page__brand">
           <div class="login-page__brand-mark" aria-hidden="true">
@@ -74,21 +160,38 @@ const submit = async () => {
           <van-field
             v-model="form.username"
             class="login-page__field"
-            name="username"
+            name="login-identity"
             placeholder="请输入手机号 / 邮箱 / 用户名"
-            autocomplete="username"
+            autocomplete="off"
+            autocapitalize="none"
+            autocorrect="off"
+            :spellcheck="false"
+            @touchstart.stop.prevent="focusField('login-identity', $event)"
+            @click.stop.prevent="focusField('login-identity', $event)"
           />
           <van-field
             v-model="form.password"
-            class="login-page__field"
-            name="password"
-            :type="showPassword ? 'text' : 'password'"
+            :class="['login-page__field', 'login-page__field--password', { 'is-visible': showPassword }]"
+            name="login-secret"
+            type="text"
+            inputmode="text"
             placeholder="请输入密码"
-            autocomplete="current-password"
+            autocomplete="off"
+            autocapitalize="none"
+            autocorrect="off"
+            :spellcheck="false"
+            @touchstart.stop.prevent="focusField('login-secret', $event)"
+            @click.stop.prevent="focusField('login-secret', $event)"
           >
             <template #right-icon>
-              <button class="login-page__field-toggle" type="button" @click="showPassword = !showPassword">
-                <van-icon :name="showPassword ? 'closed-eye' : 'eye-o'" />
+              <button
+                class="login-page__field-toggle"
+                type="button"
+                :aria-label="showPassword ? '隐藏密码' : '显示密码'"
+                :aria-pressed="showPassword"
+                @click="showPassword = !showPassword"
+              >
+                <van-icon :name="showPassword ? 'closed-eye' : 'eye-o'" aria-hidden="true" />
                 <span class="login-page__sr-only">{{ showPassword ? '隐藏密码' : '显示密码' }}</span>
               </button>
             </template>
@@ -116,10 +219,17 @@ const submit = async () => {
 
 <style scoped>
 .login-page {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100vh;
+  height: 100svh;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
-  padding: max(28px, env(safe-area-inset-top, 0px) + 20px) 24px
+  overflow: hidden;
+  overscroll-behavior: none;
+  padding: max(28px, calc(env(safe-area-inset-top, 0px) + 20px)) 24px
     calc(var(--mobile-safe-bottom) + 22px);
   background:
     radial-gradient(circle at 50% 0, rgba(93, 139, 255, 0.22), transparent 34%),
@@ -127,13 +237,23 @@ const submit = async () => {
     var(--mobile-color-bg);
 }
 
+.login-page.is-keyboard-active {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+}
+
 .login-page__content {
   width: min(100%, 392px);
-  margin: auto;
+  margin: 0 auto;
+  padding-top: 48px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 22px;
+}
+
+.login-page.is-keyboard-active .login-page__content {
+  padding-top: 8px;
+  gap: 14px;
 }
 
 .login-page__brand {
@@ -145,10 +265,21 @@ const submit = async () => {
   margin-bottom: 6px;
 }
 
+.login-page.is-keyboard-active .login-page__brand {
+  gap: 6px;
+  padding-top: 0;
+  margin-bottom: 0;
+}
+
 .login-page__brand-mark {
   position: relative;
   width: 82px;
   height: 58px;
+}
+
+.login-page.is-keyboard-active .login-page__brand-mark {
+  width: 56px;
+  height: 40px;
 }
 
 .login-page__brand-mark-main,
@@ -198,11 +329,19 @@ const submit = async () => {
   letter-spacing: -0.04em;
 }
 
+.login-page.is-keyboard-active .login-page__brand-name {
+  font-size: 20px;
+}
+
 .login-page__brand-subtitle {
   margin: 0;
   color: rgba(247, 248, 250, 0.8);
   font-size: 11px;
   line-height: 1.4;
+}
+
+.login-page.is-keyboard-active .login-page__brand-subtitle {
+  font-size: 10px;
 }
 
 .login-page__form {
@@ -227,7 +366,17 @@ const submit = async () => {
 }
 
 .login-page__field :deep(.van-field__control) {
-  font-size: 14px;
+  font-size: 16px;
+}
+
+.login-page__field--password :deep(.van-field__control) {
+  -webkit-text-security: disc;
+  text-security: disc;
+}
+
+.login-page__field--password.is-visible :deep(.van-field__control) {
+  -webkit-text-security: none;
+  text-security: none;
 }
 
 .login-page__field :deep(.van-field__control::placeholder) {
@@ -254,6 +403,11 @@ const submit = async () => {
   line-height: 1.7;
 }
 
+.login-page.is-keyboard-active .login-page__agreement {
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
 .login-page__agreement span {
   color: rgba(247, 248, 250, 0.78);
 }
@@ -262,12 +416,20 @@ const submit = async () => {
   padding-top: 10px;
 }
 
+.login-page.is-keyboard-active .login-page__actions {
+  padding-top: 4px;
+}
+
 .login-page__footer {
   width: 100%;
   margin-top: 28px;
   color: rgba(247, 248, 250, 0.38);
   font-size: 12px;
   text-align: center;
+}
+
+.login-page.is-keyboard-active .login-page__footer {
+  display: none;
 }
 
 .login-page__sr-only {

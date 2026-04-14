@@ -12,8 +12,8 @@ from paramiko import RSAKey
 HOST        = "93901.pro"
 PORT        = 22
 USER        = "root"
-PEM         = r"C:\Users\tomxiao\.ssh\InsightTrader.pem"
-LOCAL_ROOT  = Path(r"D:\CodeBase\InsightTrader")
+PEM         = Path.home() / ".ssh" / "InsightTrader.pem"
+LOCAL_ROOT  = Path(__file__).resolve().parent.parent  # deploy/ 的上级即项目根
 REMOTE_ROOT = "/opt/insighttrader"
 
 # 只上传这些顶层目录和文件（白名单）

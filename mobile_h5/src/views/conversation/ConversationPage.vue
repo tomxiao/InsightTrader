@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import DOMPurify from 'dompurify'
 import { marked } from 'marked'
 import { useRouter } from 'vue-router'
 import axios from 'axios'
@@ -34,11 +35,32 @@ const resolutionActionLoading = ref(false)
 const sendingLoading = ref(false)
 
 const promptModel = ref('')
+const conversationBodyRef = ref<HTMLElement | null>(null)
+const conversationEndRef = ref<HTMLElement | null>(null)
 
 const currentConversation = computed(() => conversationStore.currentConversation)
 const currentMessages = computed(() => conversationStore.currentMessages)
 const isAnalyzing = computed(() => currentConversation.value.status === 'analyzing')
 const taskProgress = computed(() => currentConversation.value.taskProgress ?? null)
+
+const isNearConversationBottom = () => {
+  const element = conversationBodyRef.value
+  if (!element) return true
+  return element.scrollHeight - element.scrollTop - element.clientHeight < 96
+}
+
+const scrollConversationToBottom = (behavior: ScrollBehavior = 'auto') => {
+  const marker = conversationEndRef.value
+  if (marker) {
+    marker.scrollIntoView({ block: 'end', behavior })
+    return
+  }
+
+  const element = conversationBodyRef.value
+  if (element) {
+    element.scrollTo({ top: element.scrollHeight, behavior })
+  }
+}
 
 const groupedConversations = computed(() => {
   const groups = new Map<string, ConversationSummary[]>()
@@ -226,18 +248,22 @@ const submitPrompt = async () => {
   const text = promptModel.value.trim()
   if (!text || sendingLoading.value) return
 
+  sendingLoading.value = true
+
   if (!currentConversation.value.id) {
     try {
       await createConversation()
     } catch (error) {
       showToast((error as Error).message || '创建会话失败，请稍后再试')
+      sendingLoading.value = false
       return
     }
   }
 
-  if (isAnalyzing.value) return
-
-  sendingLoading.value = true
+  if (isAnalyzing.value) {
+    sendingLoading.value = false
+    return
+  }
   promptModel.value = ''
 
   const optimisticId = `optimistic-user-${Date.now()}`
@@ -278,7 +304,7 @@ const submitPrompt = async () => {
     conversationStore.removeMessageById(optimisticId)
     conversationStore.removeMessageById(thinkingId)
     if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
-      showToast('识别耗时较长，请下拉刷新查看结果，或重新发送')
+      showToast('识别耗时较长，请稍后查看结果或重新发送')
     } else {
       showToast((error as Error).message || '发送失败，请稍后再试')
     }
@@ -408,11 +434,13 @@ const isLatestSummaryCard = (messageId: string): boolean => {
 
 const submitGuideChip = (chip: string) => {
   promptModel.value = chip
-  submitPrompt()
+  void submitPrompt()
 }
 
 const renderMarkdown = (text: string): string =>
-  marked.parse(text, { async: false }) as string
+  DOMPurify.sanitize(marked.parse(text, { async: false }) as string, {
+    USE_PROFILES: { html: true }
+  })
 
 watch(
   () => conversationStore.isDrawerOpen,
@@ -421,6 +449,21 @@ watch(
       accountMenuOpen.value = false
     }
   }
+)
+
+watch(
+  [() => currentConversation.value.id, () => currentMessages.value[currentMessages.value.length - 1]?.id],
+  async ([nextConversationId], [prevConversationId]) => {
+    const switchedConversation = nextConversationId !== prevConversationId
+    const shouldStickToBottom = switchedConversation || isNearConversationBottom()
+
+    await nextTick()
+
+    if (shouldStickToBottom) {
+      scrollConversationToBottom(switchedConversation ? 'auto' : 'smooth')
+    }
+  },
+  { flush: 'pre' }
 )
 
 onMounted(bootstrap)
@@ -446,6 +489,7 @@ onMounted(bootstrap)
         :show="conversationStore.isDrawerOpen"
         position="left"
         :style="{ width: '61.8%', height: '100%' }"
+        :lock-scroll="false"
         @click-overlay="closeDrawer"
       >
         <div class="conversation-drawer" @click="accountMenuOpen = false">
@@ -520,88 +564,91 @@ onMounted(bootstrap)
         </div>
       </van-popup>
 
-      <div class="conversation-page__body">
-        <van-pull-refresh v-model="conversationStore.isLoading" @refresh="bootstrap">
-          <div v-if="!currentMessages.length" class="conversation-empty">
-            <div class="conversation-empty__hero">
-              <h2>今天想研究什么？</h2>
-              <p class="mobile-muted">输入股票、公司信息，我会给出详尽的分析报告。</p>
-            </div>
-            <div class="conversation-empty__chips">
-              <van-button
-                v-for="prompt in suggestedPrompts"
-                :key="prompt"
-                plain
-                round
-                size="small"
-                @click="quickFill(prompt)"
-              >
-                {{ prompt }}
-              </van-button>
-            </div>
+      <div
+        ref="conversationBodyRef"
+        class="conversation-page__body"
+        :class="{ 'conversation-page__body--locked': conversationStore.isDrawerOpen }"
+      >
+        <div v-if="!currentMessages.length" class="conversation-empty">
+          <div class="conversation-empty__hero">
+            <h2>今天想研究什么？</h2>
+            <p class="mobile-muted">输入股票、公司信息，我会给出详尽的分析报告。</p>
           </div>
-
-          <div v-else class="conversation-stream">
-            <article
-              v-for="message in currentMessages"
-              :key="message.id"
-              class="conversation-message"
-              :class="[
-                `conversation-message--${message.role}`,
-                `conversation-message--${message.messageType}`
-              ]"
+          <div class="conversation-empty__chips">
+            <van-button
+              v-for="prompt in suggestedPrompts"
+              :key="prompt"
+              plain
+              round
+              size="small"
+              @click="quickFill(prompt)"
             >
-              <template v-if="message.messageType === MessageType.SUMMARY_CARD">
-                <section class="conversation-inline-card conversation-inline-card--summary">
-                  <span class="conversation-inline-card__eyebrow">研究结果</span>
-                  <h3 class="conversation-inline-card__title">投资总监的最终决策：</h3>
-                  <div
-                    class="conversation-summary conversation-summary--markdown"
-                    v-html="renderMarkdown(
-                      isSummaryExpanded(message.id)
-                        ? getMessageText(message)
-                        : getSummaryPreview(getMessageText(message))
-                    )"
-                  />
-                  <button
-                    class="conversation-summary__toggle"
-                    type="button"
-                    :data-expanded="isSummaryExpanded(message.id) ? '' : undefined"
-                    @click="toggleSummary(message.id)"
-                  >
-                    {{ isSummaryExpanded(message.id) ? '收起' : '展开全文' }}
-                  </button>
+              {{ prompt }}
+            </van-button>
+          </div>
+        </div>
 
-                  <div
-                    v-if="isLatestSummaryCard(message.id)"
-                    class="conversation-summary__guide"
-                  >
-                    <p class="conversation-summary__guide-text">
-                      你有什么想深入了解的？可以直接提问，我将基于分析报告集为你解读。
-                    </p>
-                    <div class="conversation-summary__guide-chips">
-                      <button
-                        v-for="chip in INSIGHT_GUIDE_CHIPS"
-                        :key="chip"
-                        class="conversation-summary__guide-chip"
-                        type="button"
-                        @click="submitGuideChip(chip)"
-                      >
-                        {{ chip }}
-                      </button>
-                    </div>
-                  </div>
-                </section>
-              </template>
-
-              <template v-else-if="message.messageType === MessageType.TICKER_RESOLUTION">
-                <section
-                  class="conversation-inline-card conversation-inline-card--resolution"
-                  :class="{
-                    'conversation-inline-card--resolution-error':
-                      getResolutionStatus(message) === 'failed' || getResolutionStatus(message) === 'unsupported'
-                  }"
+        <div v-else class="conversation-stream">
+          <article
+            v-for="message in currentMessages"
+            :key="message.id"
+            class="conversation-message"
+            :class="[
+              `conversation-message--${message.role}`,
+              `conversation-message--${message.messageType}`
+            ]"
+          >
+            <template v-if="message.messageType === MessageType.SUMMARY_CARD">
+              <section class="conversation-inline-card conversation-inline-card--summary">
+                <span class="conversation-inline-card__eyebrow">研究结果</span>
+                <h3 class="conversation-inline-card__title">投资总监的最终决策：</h3>
+                <div
+                  class="conversation-summary conversation-summary--markdown"
+                  v-html="renderMarkdown(
+                    isSummaryExpanded(message.id)
+                      ? getMessageText(message)
+                      : getSummaryPreview(getMessageText(message))
+                  )"
+                />
+                <button
+                  class="conversation-summary__toggle"
+                  type="button"
+                  :data-expanded="isSummaryExpanded(message.id) ? '' : undefined"
+                  @click="toggleSummary(message.id)"
                 >
+                  {{ isSummaryExpanded(message.id) ? '收起' : '展开全文' }}
+                </button>
+
+                <div
+                  v-if="isLatestSummaryCard(message.id)"
+                  class="conversation-summary__guide"
+                >
+                  <p class="conversation-summary__guide-text">
+                    你有什么想深入了解的？可以直接提问，我将基于分析报告集为你解读。
+                  </p>
+                  <div class="conversation-summary__guide-chips">
+                    <button
+                      v-for="chip in INSIGHT_GUIDE_CHIPS"
+                      :key="chip"
+                      class="conversation-summary__guide-chip"
+                      type="button"
+                      @click="submitGuideChip(chip)"
+                    >
+                      {{ chip }}
+                    </button>
+                  </div>
+                </div>
+              </section>
+            </template>
+
+            <template v-else-if="message.messageType === MessageType.TICKER_RESOLUTION">
+              <section
+                class="conversation-inline-card conversation-inline-card--resolution"
+                :class="{
+                  'conversation-inline-card--resolution-error':
+                    getResolutionStatus(message) === 'failed' || getResolutionStatus(message) === 'unsupported'
+                }"
+              >
                   <span class="conversation-inline-card__eyebrow">标的确认</span>
                   <h3 class="conversation-inline-card__title">{{ getResolutionCardTitle(message) }}</h3>
                   <p class="conversation-inline-card__description">{{ getMessageText(message) }}</p>
@@ -668,54 +715,54 @@ onMounted(bootstrap)
                       重新输入
                     </van-button>
                   </div>
-                </section>
-              </template>
+              </section>
+            </template>
 
-              <template v-else-if="message.messageType === MessageType.TASK_STATUS">
-                <div class="task-status-wrapper">
-                  <div class="conversation-notice conversation-notice--progress">
-                    <span class="conversation-notice__dot" aria-hidden="true" />
-                    <p>{{ getMessageText(message) }}</p>
-                  </div>
-                  <div
-                    v-if="message.id === latestTaskStatusId && taskProgress"
-                    class="task-inline-timer"
-                  >
-                    <span>已用 {{ formatSeconds(taskProgress.elapsedTime) }}</span>
-                    <span v-if="taskProgress.remainingTime">· 预计剩余 {{ formatSeconds(taskProgress.remainingTime) }}</span>
-                  </div>
-                </div>
-              </template>
-
-              <template v-else-if="message.messageType === MessageType.ERROR">
-                <div class="conversation-notice conversation-notice--error">
-                  <span class="conversation-notice__dot" aria-hidden="true">!</span>
+            <template v-else-if="message.messageType === MessageType.TASK_STATUS">
+              <div class="task-status-wrapper">
+                <div class="conversation-notice conversation-notice--progress">
+                  <span class="conversation-notice__dot" aria-hidden="true" />
                   <p>{{ getMessageText(message) }}</p>
                 </div>
-              </template>
-
-              <template v-else-if="message.messageType === MessageType.INSIGHT_REPLY">
-                <div class="conversation-bubble">
-                  <div
-                    class="conversation-bubble__markdown conversation-summary--markdown"
-                    v-html="renderMarkdown(getMessageText(message))"
-                  />
-                  <small>{{ formatTimeLabel(message.createdAt) }}</small>
+                <div
+                  v-if="message.id === latestTaskStatusId && taskProgress"
+                  class="task-inline-timer"
+                >
+                  <span>已用 {{ formatSeconds(taskProgress.elapsedTime) }}</span>
+                  <span v-if="taskProgress.remainingTime">· 预计剩余 {{ formatSeconds(taskProgress.remainingTime) }}</span>
                 </div>
-              </template>
+              </div>
+            </template>
 
-              <template v-else>
-                <div class="conversation-bubble">
-                  <span v-if="message.role !== 'assistant'" class="conversation-bubble__role">
-                    {{ message.role === 'user' ? '你' : '系统' }}
-                  </span>
-                  <p>{{ getMessageText(message) }}</p>
-                  <small>{{ formatTimeLabel(message.createdAt) }}</small>
-                </div>
-              </template>
-            </article>
-          </div>
-        </van-pull-refresh>
+            <template v-else-if="message.messageType === MessageType.ERROR">
+              <div class="conversation-notice conversation-notice--error">
+                <span class="conversation-notice__dot" aria-hidden="true">!</span>
+                <p>{{ getMessageText(message) }}</p>
+              </div>
+            </template>
+
+            <template v-else-if="message.messageType === MessageType.INSIGHT_REPLY">
+              <div class="conversation-bubble">
+                <div
+                  class="conversation-bubble__markdown conversation-summary--markdown"
+                  v-html="renderMarkdown(getMessageText(message))"
+                />
+                <small>{{ formatTimeLabel(message.createdAt) }}</small>
+              </div>
+            </template>
+
+            <template v-else>
+              <div class="conversation-bubble">
+                <span v-if="message.role !== 'assistant'" class="conversation-bubble__role">
+                  {{ message.role === 'user' ? '你' : '系统' }}
+                </span>
+                <p>{{ getMessageText(message) }}</p>
+                <small>{{ formatTimeLabel(message.createdAt) }}</small>
+              </div>
+            </template>
+          </article>
+          <div ref="conversationEndRef" class="conversation-stream__end" aria-hidden="true" />
+        </div>
       </div>
     </div>
 
@@ -740,7 +787,10 @@ onMounted(bootstrap)
 
 <style scoped>
 .conversation-page {
-  min-height: calc(100vh - 56px);
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .conversation-page__header {
@@ -791,16 +841,31 @@ onMounted(bootstrap)
 }
 
 .conversation-page__body {
-  padding: 0 var(--mobile-space-md);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding-left: clamp(24px, 6vw, 40px);
+  padding-right: clamp(24px, 6vw, 40px);
   padding-bottom: calc(154px + var(--mobile-safe-bottom));
 }
 
+.conversation-page__body--locked {
+  overflow: hidden;
+}
+
 .conversation-empty {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 16px;
   padding-top: 34px;
   min-height: calc(100vh - 240px);
+  min-height: calc(100svh - 240px);
 }
 
 .conversation-empty__hero {
@@ -847,10 +912,18 @@ onMounted(bootstrap)
 }
 
 .conversation-stream {
+  width: 100%;
+  max-width: 500px;
+  margin: 0 auto;
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding: 12px 0 18px;
+}
+
+.conversation-stream__end {
+  width: 100%;
+  height: 1px;
 }
 
 .conversation-message {
@@ -867,7 +940,7 @@ onMounted(bootstrap)
 }
 
 .conversation-bubble {
-  max-width: min(92%, 720px);
+  max-width: min(82%, 480px);
   padding: 12px 14px;
   border-radius: 18px;
   border: 1px solid var(--mobile-color-border);
@@ -999,7 +1072,7 @@ onMounted(bootstrap)
   line-height: 1.6;
   color: var(--mobile-color-text-tertiary);
   opacity: 0.75;
-  white-space: nowrap;
+  overflow: hidden;
 }
 
 .conversation-notice--error p {
@@ -1224,7 +1297,7 @@ onMounted(bootstrap)
 .conversation-input :deep(textarea) {
   min-height: 44px;
   line-height: 1.5;
-  font-size: 15px;
+  font-size: 16px;
 }
 
 
@@ -1236,6 +1309,7 @@ onMounted(bootstrap)
   padding: var(--mobile-space-lg);
   gap: 18px;
   background: var(--mobile-color-bg-elevated);
+  overflow-x: hidden;
 }
 
 .conversation-drawer__brand p,
@@ -1374,12 +1448,20 @@ onMounted(bootstrap)
   align-items: center;
   justify-content: center;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s ease, background-color 0.15s ease;
 }
 
-.conversation-drawer__item:hover .conversation-drawer__item-delete,
 .conversation-drawer__item.is-active .conversation-drawer__item-delete {
   opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .conversation-drawer__item:hover .conversation-drawer__item-delete {
+    opacity: 1;
+    pointer-events: auto;
+  }
 }
 
 .conversation-drawer__item-delete:hover {

@@ -6,8 +6,8 @@ from paramiko import RSAKey
 HOST        = "93901.pro"
 PORT        = 22
 USER        = "root"
-PEM         = r"C:\Users\tomxiao\.ssh\InsightTrader.pem"
-LOCAL_DIST  = Path(r"D:\CodeBase\InsightTrader\mobile_h5\dist")
+PEM         = Path.home() / ".ssh" / "InsightTrader.pem"
+LOCAL_DIST  = Path(__file__).resolve().parent.parent / "mobile_h5" / "dist"
 REMOTE_DIST = "/opt/insighttrader/mobile_h5/dist"
 
 def mkdir_p(sftp, remote_dir):

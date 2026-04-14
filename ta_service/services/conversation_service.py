@@ -157,23 +157,31 @@ class ConversationService:
         all_messages: list[dict],
         question: str,
     ) -> ReportInsightContext:
-        """构建 ReportInsightAgent 所需的上下文。"""
-        # 获取报告章节：通过 currentTaskId → traceDir → 磁盘文件
-        report_sections: dict[str, str] = {}
+        """构建 ReportInsightAgent 所需的上下文。
+
+        正常路径：传入 trace_dir + available_sections，Agent 按需调工具读章节。
+        降级路径：无 traceDir 时用 SUMMARY_CARD 文本填充 report_sections。
+        """
         ticker = ""
         trade_date = ""
+        trace_dir: str | None = None
+        available_sections: list[str] = []
+        report_sections: dict[str, str] = {}
 
         task_id = conversation.get("currentTaskId")
         if task_id:
             task_doc = self.task_repo.get_by_task_id(task_id)
             if task_doc:
-                trace_dir = task_doc.get("traceDir")
+                trace_dir = task_doc.get("traceDir") or None
                 ticker = task_doc.get("symbol") or ""
                 trade_date = task_doc.get("tradeDate") or ""
-                report_sections = self.report_context_loader.load(trace_dir=trace_dir)
+                if trace_dir:
+                    available_sections = self.report_context_loader.list_available_sections(
+                        trace_dir=trace_dir
+                    )
 
-        # 降级：若磁盘报告不可用，使用 SUMMARY_CARD 文本作为单章节上下文
-        if not report_sections:
+        # 降级：无磁盘报告时使用 SUMMARY_CARD 文本作为单章节上下文
+        if not trace_dir and not available_sections:
             summary_text = self._get_summary_text(all_messages=all_messages)
             if summary_text:
                 report_sections = {"executive_summary": summary_text}
@@ -182,13 +190,14 @@ class ConversationService:
                     conversation.get("id"),
                 )
 
-        # 构建多轮历史（滑动窗口，取最近 N 轮 text 消息）
         history = self._build_conversation_history(all_messages=all_messages)
 
         return ReportInsightContext(
             question=question,
             ticker=ticker,
             trade_date=trade_date,
+            trace_dir=trace_dir,
+            available_sections=available_sections,
             report_sections=report_sections,
             conversation_history=history,
         )

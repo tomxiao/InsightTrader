@@ -65,6 +65,8 @@
 
 .van-popup {
   background: var(--mobile-color-bg-elevated);
+  max-width: 100vw;
+  box-sizing: border-box;
 }
 
 .van-skeleton__row,

@@ -14,27 +14,45 @@ export function useDrawerPolling() {
   const conversationStore = useConversationStore()
 
   let timer: number | null = null
+  let activeRunId = 0
+  let inFlight = false
 
   const stopPolling = () => {
+    activeRunId += 1
     if (timer !== null) {
       window.clearInterval(timer)
       timer = null
     }
   }
 
-  const poll = async () => {
+  const poll = async (runId: number) => {
+    if (inFlight) {
+      return
+    }
+
+    inFlight = true
     try {
       const conversations = await conversationsApi.listConversations()
-      conversationStore.setConversations(conversations)
+      if (runId === activeRunId && conversationStore.isDrawerOpen) {
+        conversationStore.setConversations(conversations)
+      }
     } catch {
       // 静默失败：抽屉列表属于低优先级刷新，不打断用户
+    } finally {
+      inFlight = false
     }
   }
 
   const startPolling = async () => {
     stopPolling()
-    await poll()
-    timer = window.setInterval(poll, 3000)
+    const runId = activeRunId
+    await poll(runId)
+    if (runId !== activeRunId || !conversationStore.isDrawerOpen) {
+      return
+    }
+    timer = window.setInterval(() => {
+      void poll(runId)
+    }, 3000)
   }
 
   watch(

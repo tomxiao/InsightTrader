@@ -103,8 +103,10 @@ def get_report_context_loader(
     return ReportContextLoader(settings=settings)
 
 
-def get_report_insight_agent() -> ReportInsightAgent:
-    return ReportInsightAgent()
+def get_report_insight_agent(
+    report_context_loader: ReportContextLoader = Depends(get_report_context_loader),
+) -> ReportInsightAgent:
+    return ReportInsightAgent(report_context_loader=report_context_loader)
 
 
 def get_conversation_service(

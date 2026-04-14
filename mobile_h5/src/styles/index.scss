@@ -20,6 +20,7 @@ body {
 
 #app {
   min-height: 100vh;
+  min-height: 100svh;
 }
 
 button,
@@ -35,6 +36,12 @@ textarea {
 
 .mobile-page {
   min-height: 100vh;
+  min-height: 100svh;
+  height: 100vh;
+  height: 100svh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: transparent;
   color: var(--mobile-color-text);
 }
@@ -58,11 +65,17 @@ textarea {
 }
 
 .mobile-page__content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: var(--mobile-space-lg) var(--mobile-space-md)
     calc(var(--mobile-space-lg) + var(--mobile-safe-bottom));
 }
 
 .mobile-page__content--flush {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   padding: 0;
 }
 

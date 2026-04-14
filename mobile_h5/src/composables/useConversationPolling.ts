@@ -16,30 +16,47 @@ export function useConversationPolling(getConversationId: () => string) {
   const conversationStore = useConversationStore()
 
   let timer: number | null = null
+  let activeRunId = 0
+  let inFlight = false
 
   const stopPolling = () => {
+    activeRunId += 1
     if (timer !== null) {
       window.clearInterval(timer)
       timer = null
     }
   }
 
-  const poll = async () => {
+  const poll = async (runId: number) => {
+    if (inFlight) {
+      return
+    }
+
     const id = getConversationId()
     if (!id) return
+
+    inFlight = true
     try {
       const detail = await conversationsApi.getConversation(id)
-      conversationStore.setCurrentConversation(detail)
+      if (runId === activeRunId && detail.id === getConversationId()) {
+        conversationStore.setCurrentConversation(detail)
+      }
     } catch {
       // 轮询失败静默处理，下次间隔继续尝试
+    } finally {
+      inFlight = false
     }
   }
 
   const startPolling = () => {
     stopPolling()
+    const runId = activeRunId
     const id = getConversationId()
     if (!id) return
-    timer = window.setInterval(poll, 3000)
+    void poll(runId)
+    timer = window.setInterval(() => {
+      void poll(runId)
+    }, 3000)
   }
 
   const onVisibilityChange = () => {

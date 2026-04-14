@@ -45,6 +45,43 @@ class ReportContextLoader:
     def __init__(self, *, settings: Settings):
         self.settings = settings
 
+    def list_available_sections(self, *, trace_dir: str | None) -> list[str]:
+        """返回当前报告目录中实际存在的章节名列表。"""
+        if not trace_dir:
+            return []
+        report_dir = self._resolve_report_dir(trace_dir)
+        if not report_dir.exists():
+            return []
+        available = []
+        for section_key, relative_path in _SECTION_FILES:
+            if (report_dir / relative_path).exists():
+                available.append(section_key)
+        return available
+
+    def load_single_section(self, *, trace_dir: str | None, section: str) -> str | None:
+        """按需读取单个章节内容，供 ReportInsightAgent 工具调用使用。
+
+        Returns:
+            章节文本内容；章节不存在或读取失败时返回 None。
+        """
+        if not trace_dir:
+            return None
+        relative_path = dict(_SECTION_FILES).get(section)
+        if not relative_path:
+            logger.warning("report_context_loader: unknown section=%s", section)
+            return None
+        report_dir = self._resolve_report_dir(trace_dir)
+        file_path = report_dir / relative_path
+        if not file_path.exists():
+            return None
+        try:
+            content = file_path.read_text(encoding="utf-8").strip()
+            logger.debug("report_context_loader: loaded single section=%s chars=%d", section, len(content))
+            return content or None
+        except OSError as exc:
+            logger.warning("report_context_loader: failed to read section=%s error=%s", section, exc)
+            return None
+
     def load(self, *, trace_dir: str | None) -> dict[str, str]:
         """
         根据 trace_dir 加载报告章节。

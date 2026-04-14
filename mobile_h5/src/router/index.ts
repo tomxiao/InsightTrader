@@ -1,3 +1,4 @@
+import axios from 'axios'
 import { createRouter, createWebHistory } from 'vue-router'
 import { userApi } from '@api/user'
 import { useAuthStore } from '@stores/auth'
@@ -35,13 +36,15 @@ router.beforeEach(async to => {
   const authStore = useAuthStore()
 
   if (authStore.token && !authStore.hasCheckedSession) {
+    let shouldMarkSessionChecked = true
     try {
       const user = await userApi.getCurrentUser()
       authStore.setUser(user)
-    } catch {
+    } catch (error) {
       // 401 handling is centralized in the axios interceptor.
+      shouldMarkSessionChecked = axios.isAxiosError(error) && error.response?.status === 401
     } finally {
-      authStore.markSessionChecked(true)
+      authStore.markSessionChecked(shouldMarkSessionChecked)
     }
   }
 
