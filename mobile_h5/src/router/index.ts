@@ -25,6 +25,16 @@ const routes = [
       requiresAuth: true
     }
   },
+  {
+    path: '/admin/users',
+    name: 'AdminUsers',
+    component: () => import('@views/admin/AdminUsersPage.vue'),
+    meta: {
+      title: '用户管理',
+      requiresAuth: true,
+      requiresAdmin: true
+    }
+  },
 ]
 
 const router = createRouter({
@@ -50,6 +60,10 @@ router.beforeEach(async to => {
 
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
     return { name: 'Login' }
+  }
+
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    return { name: 'Conversation' }
   }
 
   if (to.name === 'Login' && authStore.isAuthenticated) {

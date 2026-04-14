@@ -3,6 +3,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from pymongo import ReturnDocument
+
 from ta_service.db.mongo import MongoCollections
 
 
@@ -43,6 +45,34 @@ class UserRepository:
 
     def get_by_username(self, username: str) -> dict | None:
         return self.collection.find_one({"username": username}, {"_id": 0})
+
+    def list_users(self) -> list[dict]:
+        cursor = self.collection.find(
+            {},
+            {
+                "_id": 0,
+                "passwordHash": 0,
+            },
+        ).sort("createdAt", 1)
+        return list(cursor)
+
+    def update_status(self, user_id: str, status: str) -> dict | None:
+        now = _utc_now_iso()
+        return self.collection.find_one_and_update(
+            {"id": user_id},
+            {"$set": {"status": status, "updatedAt": now}},
+            projection={"_id": 0, "passwordHash": 0},
+            return_document=ReturnDocument.AFTER,
+        )
+
+    def update_password_hash(self, user_id: str, password_hash: str) -> dict | None:
+        now = _utc_now_iso()
+        return self.collection.find_one_and_update(
+            {"id": user_id},
+            {"$set": {"passwordHash": password_hash, "updatedAt": now}},
+            projection={"_id": 0, "passwordHash": 0},
+            return_document=ReturnDocument.AFTER,
+        )
 
     def update_last_login(self, user_id: str) -> None:
         now = _utc_now_iso()

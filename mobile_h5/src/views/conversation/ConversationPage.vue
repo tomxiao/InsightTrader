@@ -154,6 +154,7 @@ const currentConversationStatusLabel = computed(
 
 const accountDisplayName = computed(() => authStore.user?.displayName || authStore.user?.username || '未登录')
 const accountInitial = computed(() => accountDisplayName.value.trim().charAt(0).toUpperCase() || 'U')
+const isAdmin = computed(() => authStore.isAdmin)
 
 const loadConversation = async (conversationId: string) => {
   const detail = await conversationsApi.getConversation(conversationId)
@@ -426,6 +427,11 @@ const closeDrawer = () => {
   accountMenuOpen.value = false
 }
 
+const openUserManagement = () => {
+  closeDrawer()
+  void router.push({ name: 'AdminUsers' })
+}
+
 useConversationPolling(() => currentConversation.value.id)
 
 useDrawerPolling()
@@ -639,6 +645,15 @@ onMounted(async () => {
                 <van-icon name="ellipsis" />
               </button>
               <div v-if="accountMenuOpen" class="conversation-drawer__account-menu">
+                <button
+                  v-if="isAdmin"
+                  class="conversation-drawer__account-menu-item"
+                  type="button"
+                  @click="openUserManagement"
+                >
+                  <van-icon name="manager-o" />
+                  <span>用户管理</span>
+                </button>
                 <button class="conversation-drawer__account-menu-item" type="button" :disabled="logoutLoading" @click="logout">
                   <van-icon name="revoke" />
                   <span>{{ logoutLoading ? '退出中...' : '退出登录' }}</span>

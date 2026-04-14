@@ -11,6 +11,7 @@ from ta_service.repos.messages import MessageRepository
 from ta_service.repos.user_sessions import UserSessionRepository
 from ta_service.repos.users import UserRepository
 from ta_service.services.analysis_service import AnalysisService
+from ta_service.services.admin_user_service import AdminUserService
 from ta_service.services.auth_service import AuthService
 from ta_service.services.conversation_service import ConversationService
 from ta_service.services.conversation_state_machine import ConversationStateMachine
@@ -65,6 +66,12 @@ def get_auth_service(
         session_repo=session_repo,
         settings=settings,
     )
+
+
+def get_admin_user_service(
+    user_repo: UserRepository = Depends(get_user_repository),
+) -> AdminUserService:
+    return AdminUserService(user_repo=user_repo)
 
 
 def get_access_token(

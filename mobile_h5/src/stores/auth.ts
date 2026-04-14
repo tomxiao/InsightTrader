@@ -19,7 +19,8 @@ export const useAuthStore = defineStore('mobile-auth', {
     hasCheckedSession: false
   }),
   getters: {
-    isAuthenticated: state => Boolean(state.token && state.user)
+    isAuthenticated: state => Boolean(state.token && state.user),
+    isAdmin: state => state.user?.role === 'admin'
   },
   actions: {
     setAuth(token: string, user: MobileUser) {

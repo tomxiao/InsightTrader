@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from ta_service.api.routes.analysis import router as analysis_router
+from ta_service.api.routes.admin_users import router as admin_users_router
 from ta_service.api.routes.auth import router as auth_router
 from ta_service.api.routes.conversations import router as conversations_router
 from ta_service.api.routes.health import router as health_router
@@ -45,6 +46,7 @@ def create_app() -> FastAPI:
 
     app.include_router(health_router)
     app.include_router(auth_router, prefix=settings.api_prefix)
+    app.include_router(admin_users_router, prefix=settings.api_prefix)
     app.include_router(analysis_router, prefix=settings.api_prefix)
     app.include_router(conversations_router, prefix=settings.api_prefix)
     return app
