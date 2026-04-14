@@ -222,6 +222,10 @@ __marimo__/
 
 # output
 results/
+reports/
 validation/vendor-news-lab/outputs/
 validation/llm-response-lab/outputs/
 **/node_modules/
+
+# logs
+logs/

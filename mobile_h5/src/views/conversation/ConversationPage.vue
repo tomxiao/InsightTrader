@@ -147,6 +147,56 @@ const canSubmitPrompt = computed(() =>
   Boolean(promptModel.value.trim()) && !sendingLoading.value && !isAnalyzing.value
 )
 
+const collapsedInsightReplyIds = ref(new Set<string>())
+
+const getInsightReplyMessages = () =>
+  currentMessages.value.filter(message => message.messageType === MessageType.INSIGHT_REPLY)
+
+const getLatestInsightReplyId = (): string => {
+  const insightReplies = getInsightReplyMessages()
+  if (!insightReplies.length) return ''
+  return insightReplies[insightReplies.length - 1].id
+}
+
+const initializeInsightReplyCollapseState = () => {
+  const insightReplies = getInsightReplyMessages()
+  if (insightReplies.length <= 1) {
+    collapsedInsightReplyIds.value = new Set()
+    return
+  }
+
+  collapsedInsightReplyIds.value = new Set(
+    insightReplies.slice(0, -1).map(message => message.id)
+  )
+}
+
+const isInsightReplyCollapsed = (messageId: string): boolean =>
+  collapsedInsightReplyIds.value.has(messageId)
+
+const setInsightReplyCollapsed = (messageId: string, collapsed: boolean) => {
+  const next = new Set(collapsedInsightReplyIds.value)
+  if (collapsed) {
+    next.add(messageId)
+  } else {
+    next.delete(messageId)
+  }
+  collapsedInsightReplyIds.value = next
+}
+
+const toggleInsightReply = (messageId: string) => {
+  setInsightReplyCollapsed(messageId, !isInsightReplyCollapsed(messageId))
+}
+
+const collapseLatestInsightReply = () => {
+  const latestInsightReplyId = getLatestInsightReplyId()
+  if (!latestInsightReplyId) return
+  setInsightReplyCollapsed(latestInsightReplyId, true)
+}
+
+const expandInsightReply = (messageId: string) => {
+  setInsightReplyCollapsed(messageId, false)
+}
+
 
 const currentConversationStatusLabel = computed(
   () => conversationHeaderSubtitleMap[currentConversation.value.status] || '输入标的后开始分析'
@@ -308,6 +358,11 @@ const submitPrompt = async () => {
     sendingLoading.value = false
     return
   }
+
+  if (isFollowupMode.value) {
+    collapseLatestInsightReply()
+  }
+
   promptModel.value = ''
 
   const optimisticId = `optimistic-user-${Date.now()}`
@@ -528,6 +583,15 @@ watch(
     const switchedConversation = nextConversationId !== prevConversationId
     const shouldStickToBottom = switchedConversation || isNearConversationBottom(220)
 
+    if (switchedConversation) {
+      initializeInsightReplyCollapseState()
+    }
+
+    const latestMessage = currentMessages.value[currentMessages.value.length - 1]
+    if (latestMessage?.messageType === MessageType.INSIGHT_REPLY) {
+      expandInsightReply(latestMessage.id)
+    }
+
     await nextTick()
 
     if (nextLatestMessageId && skipAutoStickMessageId.value === nextLatestMessageId) {
@@ -547,6 +611,7 @@ watch(
 
 onMounted(async () => {
   await bootstrap()
+  initializeInsightReplyCollapseState()
   await nextTick()
   syncConversationChromeState()
 })
@@ -846,9 +911,21 @@ onMounted(async () => {
             <template v-else-if="message.messageType === MessageType.INSIGHT_REPLY">
               <div class="conversation-bubble conversation-bubble--insight">
                 <div
-                  class="conversation-summary conversation-summary--markdown conversation-bubble__markdown"
-                  v-html="renderMarkdown(getMessageText(message))"
-                />
+                  class="conversation-bubble__markdown-shell"
+                  :class="{ 'is-collapsed': isInsightReplyCollapsed(message.id) }"
+                >
+                  <div
+                    class="conversation-summary conversation-summary--markdown conversation-bubble__markdown"
+                    v-html="renderMarkdown(getMessageText(message))"
+                  />
+                </div>
+                <button
+                  class="conversation-bubble__toggle"
+                  :class="{ 'is-collapsed': isInsightReplyCollapsed(message.id) }"
+                  type="button"
+                  :aria-label="isInsightReplyCollapsed(message.id) ? '展开全文' : '收起全文'"
+                  @click="toggleInsightReply(message.id)"
+                ><span class="conversation-bubble__toggle-icon" aria-hidden="true" /></button>
                 <small>{{ formatTimeLabel(message.createdAt) }}</small>
               </div>
             </template>
@@ -1502,6 +1579,84 @@ onMounted(async () => {
   border: 0;
   border-radius: 0;
   background: transparent;
+}
+
+.conversation-bubble__markdown-shell {
+  position: relative;
+}
+
+.conversation-bubble__markdown-shell.is-collapsed {
+  max-height: 13.5em;
+  overflow: hidden;
+}
+
+.conversation-bubble__markdown-shell.is-collapsed::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 52px;
+  background: linear-gradient(180deg, rgba(18, 20, 26, 0), rgba(18, 20, 26, 0.96) 78%);
+  pointer-events: none;
+}
+
+.conversation-bubble__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  margin: -10px auto 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 999px;
+  background: rgba(32, 34, 40, 0.68);
+  color: var(--mobile-color-text-secondary);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.conversation-bubble__toggle.is-collapsed {
+  position: relative;
+  z-index: 1;
+  margin: -28px auto 6px;
+}
+
+.conversation-bubble__toggle-icon {
+  position: relative;
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.conversation-bubble__toggle-icon::before,
+.conversation-bubble__toggle-icon::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+}
+
+.conversation-bubble__toggle.is-collapsed .conversation-bubble__toggle-icon::before {
+  top: -1px;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.conversation-bubble__toggle.is-collapsed .conversation-bubble__toggle-icon::after {
+  top: 4px;
+  transform: translateX(-50%) rotate(45deg);
+}
+
+.conversation-bubble__toggle:not(.is-collapsed) .conversation-bubble__toggle-icon::before {
+  top: 1px;
+  transform: translateX(-50%) rotate(-135deg);
+}
+
+.conversation-bubble__toggle:not(.is-collapsed) .conversation-bubble__toggle-icon::after {
+  top: 6px;
+  transform: translateX(-50%) rotate(-135deg);
 }
 
 .conversation-inline-card__meta {
