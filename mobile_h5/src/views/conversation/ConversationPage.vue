@@ -601,9 +601,9 @@ onMounted(bootstrap)
             <template v-if="message.messageType === MessageType.SUMMARY_CARD">
               <section class="conversation-inline-card conversation-inline-card--summary">
                 <span class="conversation-inline-card__eyebrow">研究结果</span>
-                <h3 class="conversation-inline-card__title">投资总监的最终决策：</h3>
+                <h3 class="conversation-inline-card__title">投资总监的最终决策</h3>
                 <div
-                  class="conversation-summary conversation-summary--markdown"
+                  class="conversation-summary conversation-summary--markdown conversation-summary--result"
                   v-html="renderMarkdown(
                     isSummaryExpanded(message.id)
                       ? getMessageText(message)
@@ -742,9 +742,9 @@ onMounted(bootstrap)
             </template>
 
             <template v-else-if="message.messageType === MessageType.INSIGHT_REPLY">
-              <div class="conversation-bubble">
+              <div class="conversation-bubble conversation-bubble--insight">
                 <div
-                  class="conversation-bubble__markdown conversation-summary--markdown"
+                  class="conversation-summary conversation-summary--markdown conversation-bubble__markdown"
                   v-html="renderMarkdown(getMessageText(message))"
                 />
                 <small>{{ formatTimeLabel(message.createdAt) }}</small>
@@ -858,7 +858,7 @@ onMounted(bootstrap)
 
 .conversation-empty {
   width: 100%;
-  max-width: 500px;
+  max-width: 480px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -913,7 +913,7 @@ onMounted(bootstrap)
 
 .conversation-stream {
   width: 100%;
-  max-width: 500px;
+  max-width: 480px;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -940,7 +940,7 @@ onMounted(bootstrap)
 }
 
 .conversation-bubble {
-  max-width: min(82%, 480px);
+  max-width: min(82%, 460px);
   padding: 12px 14px;
   border-radius: 18px;
   border: 1px solid var(--mobile-color-border);
@@ -1090,9 +1090,12 @@ onMounted(bootstrap)
 
 .conversation-summary--markdown {
   white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 
   :deep(p) {
-    margin: 0 0 8px;
+    margin: 0 0 12px;
+    line-height: 1.85;
     &:last-child {
       margin-bottom: 0;
     }
@@ -1101,31 +1104,93 @@ onMounted(bootstrap)
   :deep(h1),
   :deep(h2),
   :deep(h3) {
-    font-size: 14px;
-    font-weight: 600;
-    margin: 10px 0 4px;
+    font-weight: 700;
+    line-height: 1.45;
+    margin: 20px 0 8px;
+  }
+
+  :deep(h1) {
+    font-size: 18px;
+  }
+
+  :deep(h2) {
+    font-size: 16px;
+  }
+
+  :deep(h3) {
+    font-size: 15px;
   }
 
   :deep(ul),
   :deep(ol) {
-    padding-left: 18px;
-    margin: 4px 0 8px;
+    padding-left: 20px;
+    margin: 8px 0 12px;
   }
 
   :deep(li) {
-    margin: 2px 0;
+    margin: 4px 0;
+    line-height: 1.75;
   }
 
   :deep(strong) {
-    font-weight: 600;
+    font-weight: 700;
   }
 
   :deep(blockquote) {
-    margin: 6px 0;
-    padding: 4px 10px;
-    border-left: 3px solid rgba(0, 0, 0, 0.15);
-    color: rgba(0, 0, 0, 0.55);
+    margin: 14px 0;
+    padding: 10px 14px;
+    border-left: 3px solid rgba(93, 139, 255, 0.55);
+    border-radius: 0 14px 14px 0;
+    background: rgba(93, 139, 255, 0.08);
+    color: var(--mobile-color-text-secondary);
     font-size: 13px;
+  }
+
+  :deep(hr) {
+    border: 0;
+    border-top: 1px solid rgba(255, 255, 255, 0.08);
+    margin: 20px 0;
+  }
+
+  :deep(code) {
+    padding: 2px 6px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.08);
+    font-size: 0.92em;
+  }
+
+  :deep(pre) {
+    overflow-x: auto;
+    margin: 14px 0;
+    padding: 12px 14px;
+    border-radius: 16px;
+    background: rgba(0, 0, 0, 0.28);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  :deep(pre code) {
+    padding: 0;
+    background: transparent;
+  }
+
+  :deep(table) {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 14px 0;
+    font-size: 13px;
+  }
+
+  :deep(th),
+  :deep(td) {
+    padding: 8px 10px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    text-align: left;
+    vertical-align: top;
+  }
+
+  :deep(th) {
+    background: rgba(255, 255, 255, 0.04);
+    font-weight: 600;
   }
 }
 
@@ -1161,8 +1226,8 @@ onMounted(bootstrap)
 
 .conversation-summary__guide {
   margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(0, 0, 0, 0.07);
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .conversation-summary__guide-text {
@@ -1199,16 +1264,23 @@ onMounted(bootstrap)
 
 .conversation-inline-card {
   width: 100%;
-  padding: 14px 0 6px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding: 10px 0 6px;
+}
+
+.conversation-inline-card--summary {
+  padding: 14px 16px 10px;
+  border: 1px solid rgba(93, 139, 255, 0.14);
+  border-radius: 18px;
+  background: rgba(93, 139, 255, 0.06);
 }
 
 .conversation-inline-card__eyebrow {
   display: inline-block;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
   color: var(--mobile-color-text-tertiary);
   font-size: 11px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .conversation-inline-card__title,
@@ -1225,6 +1297,28 @@ onMounted(bootstrap)
   margin-top: 6px;
   color: var(--mobile-color-text-secondary);
   line-height: 1.6;
+}
+
+.conversation-summary--result,
+.conversation-bubble__markdown {
+  color: var(--mobile-color-text);
+  font-size: 15px;
+  margin-top: 8px;
+}
+
+.conversation-summary--result :deep(p:first-child),
+.conversation-bubble__markdown :deep(p:first-child) {
+  font-size: 16px;
+  line-height: 1.85;
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.conversation-bubble--insight {
+  max-width: 100%;
+  padding: 2px 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 .conversation-inline-card__meta {
