@@ -20,7 +20,6 @@ def build_conversation_summary(document: dict) -> ConversationSummary:
         title=document["title"],
         status=document["status"],
         updatedAt=document["updatedAt"],
-        lastReportId=document.get("lastReportId"),
     )
 
 

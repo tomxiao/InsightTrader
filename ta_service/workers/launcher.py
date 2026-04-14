@@ -7,8 +7,9 @@ from pathlib import Path
 
 
 def spawn_analysis_task_runner(task_id: str) -> subprocess.Popen:
-    project_root = Path(__file__).resolve().parents[2]
-    log_dir = project_root / "logs"
+    # 使用当前工作目录作为项目根，兼容源码运行和 pip install 两种模式
+    project_root = Path(os.getcwd())
+    log_dir = Path(os.getenv("TA_SERVICE_LOG_DIR", "logs")).resolve()
     log_dir.mkdir(parents=True, exist_ok=True)
     worker_log = log_dir / "ta_service.log"
 

@@ -11,7 +11,6 @@ const emptyConversation: ConversationDetail = {
   title: '新会话',
   status: 'idle',
   updatedAt: '',
-  lastReportId: null,
   taskProgress: null,
   messages: []
 }
@@ -51,7 +50,6 @@ export const useConversationStore = defineStore('mobile-conversation', {
         title: detail.title,
         status: detail.status,
         updatedAt: detail.updatedAt,
-        lastReportId: detail.lastReportId,
       })
     },
     appendMessages(messages: ConversationMessage[]) {
@@ -74,7 +72,6 @@ export const useConversationStore = defineStore('mobile-conversation', {
           title: this.currentConversation.title,
           status: this.currentConversation.status,
           updatedAt: this.currentConversation.updatedAt,
-          lastReportId: this.currentConversation.lastReportId,
         })
       }
       storage.set(CURRENT_CONVERSATION_KEY, this.currentConversation)

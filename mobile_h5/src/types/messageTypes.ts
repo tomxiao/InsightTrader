@@ -12,7 +12,7 @@ export const MessageType = {
   TICKER_RESOLUTION: 'ticker_resolution',
   TASK_STATUS: 'task_status',
   SUMMARY_CARD: 'summary_card',
-  REPORT_CARD: 'report_card',
+  INSIGHT_REPLY: 'insight_reply',
   ERROR: 'error',
 } as const
 
@@ -37,13 +37,6 @@ export interface ErrorContent {
 /** SUMMARY_CARD: 分析完成后的执行摘要卡片 */
 export interface SummaryCardContent {
   text: string
-}
-
-/** REPORT_CARD: 完整报告入口卡片 */
-export interface ReportCardContent {
-  reportId: string
-  title: string
-  createdAt?: string | null
 }
 
 /** TICKER_RESOLUTION: 标的识别过程的交互卡片 */
@@ -119,18 +112,6 @@ export function isSummaryCardContent(
     typeof content === 'object' &&
     content !== null &&
     'text' in content
-  )
-}
-
-export function isReportCardContent(
-  type: MessageType,
-  content: unknown,
-): content is ReportCardContent {
-  return (
-    type === MessageType.REPORT_CARD &&
-    typeof content === 'object' &&
-    content !== null &&
-    'reportId' in content
   )
 }
 

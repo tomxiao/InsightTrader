@@ -8,7 +8,6 @@ from typing import Callable
 
 from ta_service.callbacks.stats_handler import StatsCallbackHandler
 from ta_service.adapters.result_mapper import (
-    build_complete_report_markdown,
     extract_executive_summary,
     save_report_to_disk,
 )
@@ -44,7 +43,6 @@ class RunnerRequest:
 class RunnerResult:
     run_context: RunContext
     final_state: dict
-    complete_report_markdown: str
     executive_summary: str | None
     stats: dict
     report_dir: Path | None = None
@@ -170,7 +168,6 @@ class TradingAgentsRunner:
             if final_state is None:
                 raise RuntimeError("TradingAgents did not produce a final state")
 
-            complete_report = build_complete_report_markdown(final_state, payload.ticker)
             report_dir = save_report_to_disk(
                 final_state,
                 self.settings.reports_root / run_context.trace_dir.name,
@@ -178,7 +175,6 @@ class TradingAgentsRunner:
             return RunnerResult(
                 run_context=run_context,
                 final_state=final_state,
-                complete_report_markdown=complete_report,
                 executive_summary=extract_executive_summary(final_state),
                 stats=stats_handler.get_stats(),
                 report_dir=report_dir,
@@ -195,7 +191,7 @@ class TradingAgentsRunner:
         config = DEFAULT_CONFIG.copy()
         config["results_dir"] = str(self.settings.results_root)
         config["output_language"] = self.settings.default_output_language
-        config["project_dir"] = str(Path(__file__).resolve().parents[2])
+        config["project_dir"] = str(Path(os.getcwd()))
         return config
 
     def _build_stage_snapshot(self, selected_analysts: list[str], state: dict) -> dict[str, str]:

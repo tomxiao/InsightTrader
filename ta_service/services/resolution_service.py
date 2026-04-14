@@ -23,7 +23,6 @@ from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.stock_lookup_gateway import StockLookupError, StockLookupGateway
-from ta_service.workers.queue import AnalysisJobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +41,6 @@ class ResolutionService:
         stock_lookup_gateway: StockLookupGateway,
         analysis_service: AnalysisService,
         task_repo: AnalysisTaskRepository,
-        queue: AnalysisJobQueue,
         state_machine: ConversationStateMachine,
     ):
         self.conversation_repo = conversation_repo
@@ -51,7 +49,6 @@ class ResolutionService:
         self.stock_lookup_gateway = stock_lookup_gateway
         self.analysis_service = analysis_service
         self.task_repo = task_repo
-        self.queue = queue
         self.state_machine = state_machine
 
     def resolve_message(
@@ -276,16 +273,12 @@ class ResolutionService:
         尝试立即启动分析任务，返回任务文档（含进度字段）。
         失败时仅记录日志，返回 None，不阻断 resolution 响应。
         """
-        active_task = self.task_repo.get_active_for_user(user_id)
+        active_task = self.task_repo.get_active_for_user(
+            user_id, ttl_seconds=self.analysis_service.settings.analysis_task_ttl_seconds
+        )
         if active_task:
             logger.warning(
                 "auto_launch_skipped reason=active_task_exists user_id=%s conversation_id=%s",
-                user_id, conversation_id,
-            )
-            return None
-        if not self.queue.acquire_user_lock(user_id):
-            logger.warning(
-                "auto_launch_skipped reason=lock_unavailable user_id=%s conversation_id=%s",
                 user_id, conversation_id,
             )
             return None

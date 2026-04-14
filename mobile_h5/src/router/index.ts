@@ -24,15 +24,6 @@ const routes = [
       requiresAuth: true
     }
   },
-  {
-    path: '/report/:id',
-    name: 'ReportReader',
-    component: () => import('@views/report/ReportReaderPage.vue'),
-    meta: {
-      title: '完整报告',
-      requiresAuth: true
-    }
-  }
 ]
 
 const router = createRouter({

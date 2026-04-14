@@ -11,7 +11,6 @@ class AnalysisTaskStatusResponse(BaseModel):
     message: str | None = None
     elapsedTime: int | None = None
     remainingTime: int | None = None
-    reportId: str | None = None
 
 
 class CreateAnalysisTaskRequest(BaseModel):

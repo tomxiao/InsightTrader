@@ -23,15 +23,18 @@ class Settings:
 
     redis_url: str = os.getenv("TA_SERVICE_REDIS_URL", "redis://localhost:6379/0")
     redis_queue_key: str = os.getenv("TA_SERVICE_REDIS_QUEUE_KEY", "ta_service:analysis:queue")
-    redis_lock_prefix: str = os.getenv(
-        "TA_SERVICE_REDIS_LOCK_PREFIX", "ta_service:analysis:lock:user:"
-    )
-    redis_lock_ttl_seconds: int = int(
-        os.getenv("TA_SERVICE_REDIS_LOCK_TTL_SECONDS", "7200")
+    analysis_task_ttl_seconds: int = int(
+        os.getenv("TA_SERVICE_ANALYSIS_TASK_TTL_SECONDS", "7200")
     )
 
     results_root: Path = Path(os.getenv("TA_SERVICE_RESULTS_DIR", "./results/ta_service"))
     reports_root: Path = Path(os.getenv("TA_SERVICE_REPORTS_DIR", "./reports"))
+    followup_report_context_chars: int = int(
+        os.getenv("TA_SERVICE_FOLLOWUP_REPORT_CONTEXT_CHARS", "8000")
+    )
+    followup_history_turns: int = int(
+        os.getenv("TA_SERVICE_FOLLOWUP_HISTORY_TURNS", "6")
+    )
     auth_token_prefix: str = os.getenv("TA_SERVICE_AUTH_TOKEN_PREFIX", "dev-token")
     auth_session_ttl_seconds: int = int(
         os.getenv("TA_SERVICE_AUTH_SESSION_TTL_SECONDS", str(7 * 24 * 60 * 60))

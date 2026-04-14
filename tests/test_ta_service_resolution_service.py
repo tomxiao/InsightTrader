@@ -101,6 +101,22 @@ class ResolutionServiceTests(unittest.TestCase):
         self.message_repo = FakeMessageRepo()
 
     def _create_service(self, results: list[AgentResolutionResult]) -> ResolutionService:
+        from types import SimpleNamespace
+
+        class FakeTaskRepo:
+            def get_active_for_user(self, user_id: str, ttl_seconds: int = 7200):
+                return None
+
+        class FakeStateMachine:
+            def transition(self, **kwargs):
+                pass
+
+        class FakeAnalysisService:
+            settings = SimpleNamespace(analysis_task_ttl_seconds=7200)
+
+            def _check_active_task(self, user_id: str):
+                return None
+
         gateway = FakeStockLookupGateway(
             {
                 "AAPL": self.apple,
@@ -113,6 +129,9 @@ class ResolutionServiceTests(unittest.TestCase):
             message_repo=self.message_repo,
             resolution_agent=agent,
             stock_lookup_gateway=gateway,
+            analysis_service=FakeAnalysisService(),
+            task_repo=FakeTaskRepo(),
+            state_machine=FakeStateMachine(),
         )
         service._fake_agent = agent  # type: ignore[attr-defined]
         return service

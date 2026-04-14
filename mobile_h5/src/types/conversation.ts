@@ -3,7 +3,6 @@ import type {
   TaskStatusContent,
   ErrorContent,
   SummaryCardContent,
-  ReportCardContent,
   TickerResolutionContent,
 } from '@/types/messageTypes'
 
@@ -33,7 +32,6 @@ export interface ConversationSummary {
   title: string
   status: ConversationStatus
   updatedAt: string
-  lastReportId?: string | null
 }
 
 export interface ConversationMessage {
@@ -45,7 +43,6 @@ export interface ConversationMessage {
     | TaskStatusContent
     | ErrorContent
     | SummaryCardContent
-    | ReportCardContent
     | TickerResolutionContent
   createdAt: string
 }
@@ -65,5 +62,4 @@ export interface PostConversationMessageRequest {
 
 export interface PostConversationMessageResponse {
   messages: ConversationMessage[]
-  reportId?: string | null
 }

@@ -21,7 +21,6 @@ class ConversationRepository:
             "userId": user_id,
             "title": title,
             "status": "idle",
-            "lastReportId": None,
             "currentTaskId": None,
             "pendingResolution": None,
             "confirmedStock": None,
@@ -48,8 +47,6 @@ class ConversationRepository:
         title: str | None = None,
         task_id: str | None = None,
         set_task_id: bool = False,
-        report_id: str | None = None,
-        set_report_id: bool = False,
         pending_resolution: dict | None = None,
         set_pending_resolution: bool = False,
         confirmed_stock: dict | None = None,
@@ -66,8 +63,6 @@ class ConversationRepository:
             update["title"] = title
         if set_task_id:
             update["currentTaskId"] = task_id
-        if set_report_id:
-            update["lastReportId"] = report_id
         if set_pending_resolution:
             update["pendingResolution"] = pending_resolution
         if set_confirmed_stock:

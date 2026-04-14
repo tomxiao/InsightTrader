@@ -67,18 +67,20 @@ def _parse_iso_datetime(value: str | None) -> datetime | None:
 
 
 def resolve_elapsed_time(document: dict) -> int | None:
-    """动态计算任务已用时间。running/pending 状态时用 now-createdAt 推算，其余直接返回字段值。"""
+    """计算任务已用时间。
+
+    - 运行中（pending/running）：始终用 now-createdAt 动态计算，忽略快照值，
+      确保每次轮询都能反映真实耗时，不因 stage 切换间隔而静止。
+    - 已结束（completed/failed/cancelled）：直接返回任务完成时写入的精确字段值。
+    """
     status = normalize_mobile_status(document["status"])
-    explicit_elapsed = document.get("elapsedTime")
-    if explicit_elapsed not in (None, 0):
-        return explicit_elapsed
 
     if status not in {"pending", "running"}:
-        return explicit_elapsed
+        return document.get("elapsedTime")
 
     created_at = _parse_iso_datetime(document.get("createdAt"))
     if not created_at:
-        return explicit_elapsed
+        return document.get("elapsedTime")
 
     now = datetime.now(timezone.utc)
     return max(int((now - created_at).total_seconds()), 0)
@@ -114,5 +116,4 @@ def build_task_status_response(document: dict) -> AnalysisTaskStatusResponse:
         message=document.get("message") or resolve_stage_message(document.get("stageId")),
         elapsedTime=elapsed_time,
         remainingTime=resolve_remaining_time(document, elapsed_time),
-        reportId=document.get("reportId"),
     )

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from ta_service.db.mongo import MongoCollections
@@ -39,7 +39,6 @@ class AnalysisTaskRepository:
             "message": "任务已进入队列",
             "elapsedTime": 0,
             "remainingTime": None,
-            "reportId": None,
             "runId": None,
             "traceDir": None,
             "createdAt": now,
@@ -54,9 +53,14 @@ class AnalysisTaskRepository:
     def get_by_task_id(self, task_id: str) -> dict | None:
         return self.collection.find_one({"taskId": task_id}, {"_id": 0})
 
-    def get_active_for_user(self, user_id: str) -> dict | None:
+    def get_active_for_user(self, user_id: str, ttl_seconds: int = 7200) -> dict | None:
+        cutoff = (datetime.now(timezone.utc) - timedelta(seconds=ttl_seconds)).isoformat()
         return self.collection.find_one(
-            {"userId": user_id, "status": {"$in": ["queued", "pending", "running", "processing"]}},
+            {
+                "userId": user_id,
+                "status": {"$in": ["queued", "pending", "running", "processing"]},
+                "updatedAt": {"$gt": cutoff},
+            },
             {"_id": 0},
         )
 

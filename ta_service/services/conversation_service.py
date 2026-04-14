@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import HTTPException, status
 
 from ta_service.contracts.conversations import (
@@ -13,13 +15,16 @@ from ta_service.models.conversation import (
     ConversationSummary,
     PostConversationMessageResponse,
 )
+from ta_service.models.report_insight import ReportInsightContext
+from ta_service.config.settings import Settings
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
-from ta_service.repos.reports import ReportRepository
 from ta_service.services.conversation_state_machine import ConversationStateMachine
-from tradingagents.default_config import DEFAULT_CONFIG
-from tradingagents.llm_clients.factory import create_llm_client
+from ta_service.services.report_context_loader import ReportContextLoader
+from ta_service.services.report_insight_agent import ReportInsightAgent
+
+logger = logging.getLogger(__name__)
 
 
 class ConversationService:
@@ -28,17 +33,29 @@ class ConversationService:
         *,
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
-        report_repo: ReportRepository,
         task_repo: AnalysisTaskRepository,
         state_machine: ConversationStateMachine,
+        settings: Settings,
+        report_context_loader: ReportContextLoader,
+        report_insight_agent: ReportInsightAgent,
     ):
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
-        self.report_repo = report_repo
         self.task_repo = task_repo
         self.state_machine = state_machine
+        self.settings = settings
+        self.report_context_loader = report_context_loader
+        self.report_insight_agent = report_insight_agent
 
     def create_conversation(self, *, user_id: str, title: str | None) -> ConversationSummary:
+        active_task = self.task_repo.get_active_for_user(
+            user_id, ttl_seconds=self.settings.analysis_task_ttl_seconds
+        )
+        if active_task:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot create a new conversation while analysis is running",
+            )
         document = self.conversation_repo.create(user_id=user_id, title=title or "新会话")
         return build_conversation_summary(document)
 
@@ -102,113 +119,101 @@ class ConversationService:
                 detail=f"post_message not allowed in conversation status: {conv_status}",
             )
 
+        all_messages = self.message_repo.list_for_conversation(conversation_id)
+
         user_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="user",
             message_type=MessageType.TEXT,
             content=message.strip(),
         )
-        report = (
-            self.report_repo.get_for_user(
-                report_id=conversation.get("lastReportId"),
-                user_id=user_id,
-            )
-            if conversation.get("lastReportId")
-            else self.report_repo.get_latest_for_conversation(
-                conversation_id=conversation_id,
-                user_id=user_id,
-            )
+
+        insight_context = self._build_insight_context(
+            conversation=conversation,
+            all_messages=all_messages,
+            question=message.strip(),
         )
-        assistant_text = self._build_followup_reply(message=message, report=report)
+        result = self.report_insight_agent.answer(context=insight_context)
+
         assistant_message = self.message_repo.create(
             conversation_id=conversation_id,
             role="assistant",
-            message_type=MessageType.TEXT,
-            content=assistant_text,
+            message_type=MessageType.INSIGHT_REPLY,
+            content=result.answer,
         )
-        next_status = "report_explaining" if report else "idle"
         self.state_machine.transition(
             conversation_id=conversation_id,
             user_id=user_id,
-            to_status=next_status,
+            to_status="report_explaining",
         )
         return PostConversationMessageResponse(
             messages=[build_message(user_message), build_message(assistant_message)],
-            reportId=report["id"] if report else None,
         )
 
-    def _build_followup_reply(self, *, message: str, report: dict | None) -> str:
-        if not report:
-            return (
-                "当前会话还没有生成可解读的完整报告。请先发起一次分析，报告生成后我再继续围绕结果回答。"
-            )
+    def _build_insight_context(
+        self,
+        *,
+        conversation: dict,
+        all_messages: list[dict],
+        question: str,
+    ) -> ReportInsightContext:
+        """构建 ReportInsightAgent 所需的上下文。"""
+        # 获取报告章节：通过 currentTaskId → traceDir → 磁盘文件
+        report_sections: dict[str, str] = {}
+        ticker = ""
+        trade_date = ""
 
-        llm = self._build_followup_llm()
-        prompt = self._build_followup_prompt(message=message, report=report)
-        if llm is None:
-            return self._build_fallback_reply(message=message, report=report)
+        task_id = conversation.get("currentTaskId")
+        if task_id:
+            task_doc = self.task_repo.get_by_task_id(task_id)
+            if task_doc:
+                trace_dir = task_doc.get("traceDir")
+                ticker = task_doc.get("symbol") or ""
+                trade_date = task_doc.get("tradeDate") or ""
+                report_sections = self.report_context_loader.load(trace_dir=trace_dir)
 
-        try:
-            response = llm.invoke(prompt)
-        except Exception:
-            return self._build_fallback_reply(message=message, report=report)
+        # 降级：若磁盘报告不可用，使用 SUMMARY_CARD 文本作为单章节上下文
+        if not report_sections:
+            summary_text = self._get_summary_text(all_messages=all_messages)
+            if summary_text:
+                report_sections = {"executive_summary": summary_text}
+                logger.info(
+                    "post_message: using summary_card fallback conversation_id=%s",
+                    conversation.get("id"),
+                )
 
-        content = getattr(response, "content", "") if response else ""
-        normalized = content.strip() if isinstance(content, str) else ""
-        return normalized or self._build_fallback_reply(message=message, report=report)
+        # 构建多轮历史（滑动窗口，取最近 N 轮 text 消息）
+        history = self._build_conversation_history(all_messages=all_messages)
 
-    def _build_followup_llm(self):
-        provider = DEFAULT_CONFIG.get("llm_provider")
-        model = DEFAULT_CONFIG.get("quick_think_llm")
-        if not provider or not model:
-            return None
-
-        try:
-            return create_llm_client(
-                provider=provider,
-                model=model,
-                base_url=DEFAULT_CONFIG.get("backend_url"),
-                timeout=DEFAULT_CONFIG.get("llm_timeout", 120),
-                max_retries=DEFAULT_CONFIG.get("llm_max_retries", 1),
-            ).get_llm()
-        except Exception:
-            return None
-
-    def _build_followup_prompt(self, *, message: str, report: dict) -> str:
-        executive_summary = (report.get("executiveSummary") or "").strip()
-        content_markdown = (report.get("contentMarkdown") or "").strip()
-        grounded_content = content_markdown[:12000]
-        return f"""
-你是 InsightTrader 移动端的一期报告解读助手。请仅基于给定报告内容回答用户追问，禁止编造报告中没有的信息。
-
-回答要求：
-1. 使用简体中文。
-2. 优先直接回答用户问题，再给出 2-4 条要点。
-3. 如果报告没有足够信息支撑答案，要明确说明"报告中没有直接给出"，然后给出基于现有内容的最接近结论。
-4. 不要提及你是模型或引用提示词。
-
-股票：{report.get("stockSymbol", "未知")}
-报告标题：{report.get("title", "未命名报告")}
-
-执行摘要：
-{executive_summary or "无"}
-
-完整报告节选：
-{grounded_content or "无"}
-
-用户问题：
-{message.strip()}
-""".strip()
-
-    def _build_fallback_reply(self, *, message: str, report: dict) -> str:
-        summary = (report.get("executiveSummary") or report.get("summary") or "").strip()
-        if not summary:
-            return (
-                f"我已记录你的问题：{message.strip()}。当前报告已生成，但缺少可直接引用的执行摘要，"
-                "建议先打开完整报告查看细节，我后续会结合完整内容继续完善解读能力。"
-            )
-        return (
-            f"我已记录你的问题：{message.strip()}。\n\n"
-            f"先基于当前执行摘要给你一个最接近的回答：\n{summary}\n\n"
-            "如果你想看更完整的依据，可以打开完整报告继续追问具体段落。"
+        return ReportInsightContext(
+            question=question,
+            ticker=ticker,
+            trade_date=trade_date,
+            report_sections=report_sections,
+            conversation_history=history,
         )
+
+    def _get_summary_text(self, *, all_messages: list[dict]) -> str | None:
+        """从消息列表中获取最新的 SUMMARY_CARD 内容。"""
+        for msg in reversed(all_messages):
+            if msg.get("messageType") == MessageType.SUMMARY_CARD:
+                content = msg.get("content")
+                if isinstance(content, dict):
+                    return content.get("text") or None
+                if isinstance(content, str):
+                    return content or None
+        return None
+
+    def _build_conversation_history(self, *, all_messages: list[dict]) -> list[dict]:
+        """提取最近 N 轮 user/assistant 对话消息作为多轮历史。"""
+        max_turns = self.settings.followup_history_turns
+        text_messages = [
+            msg for msg in all_messages
+            if msg.get("role") in ("user", "assistant")
+            and msg.get("messageType") in (MessageType.TEXT, MessageType.INSIGHT_REPLY)
+        ]
+        recent = text_messages[-max_turns:] if len(text_messages) > max_turns else text_messages
+        return [
+            {"role": msg["role"], "content": msg.get("content", "")}
+            for msg in recent
+        ]

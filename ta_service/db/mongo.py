@@ -16,7 +16,6 @@ class MongoCollections:
     messages: str = "messages"
     analysis_tasks: str = "analysis_tasks"
     task_events: str = "task_events"
-    reports: str = "reports"
 
 
 def create_mongo_client(settings: Settings) -> MongoClient:

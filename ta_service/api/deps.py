@@ -8,18 +8,17 @@ from ta_service.models.auth import MobileUser
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
-from ta_service.repos.reports import ReportRepository
 from ta_service.repos.user_sessions import UserSessionRepository
 from ta_service.repos.users import UserRepository
 from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.auth_service import AuthService
 from ta_service.services.conversation_service import ConversationService
 from ta_service.services.conversation_state_machine import ConversationStateMachine
+from ta_service.services.report_context_loader import ReportContextLoader
+from ta_service.services.report_insight_agent import ReportInsightAgent
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.resolution_service import ResolutionService
-from ta_service.services.report_service import ReportService
 from ta_service.services.stock_lookup_gateway import StockLookupGateway
-from ta_service.workers.queue import AnalysisJobQueue
 
 security = HTTPBearer(auto_error=False)
 
@@ -30,10 +29,6 @@ def get_app_state(request: Request):
 
 def get_mongo_db(request: Request):
     return get_app_state(request).mongo_db
-
-
-def get_redis(request: Request):
-    return get_app_state(request).redis
 
 
 def get_user_repository(request: Request) -> UserRepository:
@@ -56,19 +51,8 @@ def get_analysis_task_repository(request: Request) -> AnalysisTaskRepository:
     return AnalysisTaskRepository(get_mongo_db(request))
 
 
-def get_report_repository(request: Request) -> ReportRepository:
-    return ReportRepository(get_mongo_db(request))
-
-
 def get_settings_dependency() -> Settings:
     return get_settings()
-
-
-def get_job_queue(
-    request: Request,
-    settings: Settings = Depends(get_settings_dependency),
-) -> AnalysisJobQueue:
-    return AnalysisJobQueue(get_redis(request), settings)
 
 
 def get_auth_service(
@@ -113,19 +97,33 @@ def get_state_machine(
     return ConversationStateMachine(conversation_repo=conversation_repo)
 
 
+def get_report_context_loader(
+    settings: Settings = Depends(get_settings_dependency),
+) -> ReportContextLoader:
+    return ReportContextLoader(settings=settings)
+
+
+def get_report_insight_agent() -> ReportInsightAgent:
+    return ReportInsightAgent()
+
+
 def get_conversation_service(
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
-    report_repo: ReportRepository = Depends(get_report_repository),
     task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
     state_machine: ConversationStateMachine = Depends(get_state_machine),
+    settings: Settings = Depends(get_settings_dependency),
+    report_context_loader: ReportContextLoader = Depends(get_report_context_loader),
+    report_insight_agent: ReportInsightAgent = Depends(get_report_insight_agent),
 ) -> ConversationService:
     return ConversationService(
         conversation_repo=conversation_repo,
         message_repo=message_repo,
-        report_repo=report_repo,
         task_repo=task_repo,
         state_machine=state_machine,
+        settings=settings,
+        report_context_loader=report_context_loader,
+        report_insight_agent=report_insight_agent,
     )
 
 
@@ -143,8 +141,6 @@ def get_analysis_service(
     task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
     conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     message_repo: MessageRepository = Depends(get_message_repository),
-    report_repo: ReportRepository = Depends(get_report_repository),
-    queue: AnalysisJobQueue = Depends(get_job_queue),
     settings: Settings = Depends(get_settings_dependency),
     state_machine: ConversationStateMachine = Depends(get_state_machine),
 ) -> AnalysisService:
@@ -152,8 +148,6 @@ def get_analysis_service(
         task_repo=task_repo,
         conversation_repo=conversation_repo,
         message_repo=message_repo,
-        report_repo=report_repo,
-        queue=queue,
         settings=settings,
         state_machine=state_machine,
     )
@@ -166,7 +160,6 @@ def get_resolution_service(
     stock_lookup_gateway: StockLookupGateway = Depends(get_stock_lookup_gateway),
     analysis_service: AnalysisService = Depends(get_analysis_service),
     task_repo: AnalysisTaskRepository = Depends(get_analysis_task_repository),
-    queue: AnalysisJobQueue = Depends(get_job_queue),
     state_machine: ConversationStateMachine = Depends(get_state_machine),
 ) -> ResolutionService:
     return ResolutionService(
@@ -176,12 +169,7 @@ def get_resolution_service(
         stock_lookup_gateway=stock_lookup_gateway,
         analysis_service=analysis_service,
         task_repo=task_repo,
-        queue=queue,
         state_machine=state_machine,
     )
 
 
-def get_report_service(
-    report_repo: ReportRepository = Depends(get_report_repository),
-) -> ReportService:
-    return ReportService(report_repo=report_repo)

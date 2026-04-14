@@ -15,7 +15,6 @@ import { useConversationStore } from '@stores/conversation'
 import type { ConversationMessage, ConversationSummary } from '@/types/conversation'
 import {
   MessageType,
-  isReportCardContent,
   isTickerResolutionContent,
 } from '@/types/messageTypes'
 import type {
@@ -228,7 +227,12 @@ const submitPrompt = async () => {
   if (!text || sendingLoading.value) return
 
   if (!currentConversation.value.id) {
-    await createConversation()
+    try {
+      await createConversation()
+    } catch (error) {
+      showToast((error as Error).message || '创建会话失败，请稍后再试')
+      return
+    }
   }
 
   if (isAnalyzing.value) return
@@ -296,18 +300,28 @@ const openConversation = async (conversationId: string) => {
 const deleteConversation = async (conversationId: string) => {
   try {
     await conversationsApi.deleteConversation(conversationId)
-    conversationStore.removeConversation(conversationId)
-    if (currentConversation.value.id === conversationId) {
-      conversationStore.resetCurrentConversation()
-      const remaining = conversationStore.conversations
-      if (remaining.length > 0) {
-        await loadConversation(remaining[0].id)
-      } else {
-        await createConversation()
-      }
-    }
   } catch (error) {
     showToast((error as Error).message || '删除会话失败')
+    return
+  }
+
+  conversationStore.removeConversation(conversationId)
+  if (currentConversation.value.id === conversationId) {
+    conversationStore.resetCurrentConversation()
+    const remaining = conversationStore.conversations
+    if (remaining.length > 0) {
+      try {
+        await loadConversation(remaining[0].id)
+      } catch (error) {
+        showToast((error as Error).message || '加载会话失败')
+      }
+    } else {
+      try {
+        await createConversation()
+      } catch (error) {
+        showToast((error as Error).message || '创建会话失败，请稍后再试')
+      }
+    }
   }
 }
 
@@ -354,18 +368,6 @@ const getMessageText = (message: ConversationMessage) => {
   return 'text' in message.content ? (message.content.text ?? '') : ''
 }
 
-const getReportCardId = (message: ConversationMessage) =>
-  isReportCardContent(message.messageType, message.content) ? message.content.reportId : ''
-
-const getReportCardTitle = (message: ConversationMessage) =>
-  isReportCardContent(message.messageType, message.content)
-    ? (message.content.title || '查看完整报告')
-    : '查看完整报告'
-
-const getReportCardCreatedAt = (message: ConversationMessage) =>
-  isReportCardContent(message.messageType, message.content)
-    ? (message.content.createdAt ?? null)
-    : null
 
 const formatDateTime = (iso: string | null | undefined): string => {
   if (!iso) return ''
@@ -392,6 +394,21 @@ const toggleSummary = (id: string) => {
 const getSummaryPreview = (text: string) => {
   const first = text.split(/\n\n+/)[0] ?? text
   return first.trim()
+}
+
+const INSIGHT_GUIDE_CHIPS = ['主要风险是什么？', '适合什么类型的投资者？', '短期和中长期如何看？', '核心催化剂有哪些？']
+
+const isLatestSummaryCard = (messageId: string): boolean => {
+  const summaryMessages = currentMessages.value.filter(
+    m => m.messageType === MessageType.SUMMARY_CARD
+  )
+  if (!summaryMessages.length) return false
+  return summaryMessages[summaryMessages.length - 1].id === messageId
+}
+
+const submitGuideChip = (chip: string) => {
+  promptModel.value = chip
+  submitPrompt()
 }
 
 const renderMarkdown = (text: string): string =>
@@ -536,8 +553,8 @@ onMounted(bootstrap)
             >
               <template v-if="message.messageType === MessageType.SUMMARY_CARD">
                 <section class="conversation-inline-card conversation-inline-card--summary">
-                  <span class="conversation-inline-card__eyebrow">执行摘要</span>
-                  <h3 class="conversation-inline-card__title">先看核心观点，再决定是否进入全文。</h3>
+                  <span class="conversation-inline-card__eyebrow">研究结果</span>
+                  <h3 class="conversation-inline-card__title">投资总监的最终决策：</h3>
                   <div
                     class="conversation-summary conversation-summary--markdown"
                     v-html="renderMarkdown(
@@ -554,26 +571,25 @@ onMounted(bootstrap)
                   >
                     {{ isSummaryExpanded(message.id) ? '收起' : '展开全文' }}
                   </button>
-                </section>
-              </template>
 
-              <template v-else-if="message.messageType === MessageType.REPORT_CARD">
-                <section class="conversation-inline-card conversation-inline-card--report">
-                  <span class="conversation-inline-card__eyebrow">完整报告</span>
-                  <h3 class="conversation-inline-card__title">{{ getReportCardTitle(message) }}</h3>
-                  <p class="conversation-inline-card__description">完整报告已经生成，你可以进入独立阅读页查看全文。</p>
-                  <p
-                    v-if="getReportCardCreatedAt(message)"
-                    class="conversation-inline-card__meta"
-                  >生成时间：{{ formatDateTime(getReportCardCreatedAt(message)) }}</p>
-                  <div class="conversation-inline-card__action">
-                    <van-button
-                      size="small"
-                      type="primary"
-                      @click="router.push({ name: 'ReportReader', params: { id: getReportCardId(message) } })"
-                    >
-                      查看完整报告
-                    </van-button>
+                  <div
+                    v-if="isLatestSummaryCard(message.id)"
+                    class="conversation-summary__guide"
+                  >
+                    <p class="conversation-summary__guide-text">
+                      你有什么想深入了解的？可以直接提问，我将基于分析报告集为你解读。
+                    </p>
+                    <div class="conversation-summary__guide-chips">
+                      <button
+                        v-for="chip in INSIGHT_GUIDE_CHIPS"
+                        :key="chip"
+                        class="conversation-summary__guide-chip"
+                        type="button"
+                        @click="submitGuideChip(chip)"
+                      >
+                        {{ chip }}
+                      </button>
+                    </div>
                   </div>
                 </section>
               </template>
@@ -675,6 +691,16 @@ onMounted(bootstrap)
                 <div class="conversation-notice conversation-notice--error">
                   <span class="conversation-notice__dot" aria-hidden="true">!</span>
                   <p>{{ getMessageText(message) }}</p>
+                </div>
+              </template>
+
+              <template v-else-if="message.messageType === MessageType.INSIGHT_REPLY">
+                <div class="conversation-bubble">
+                  <div
+                    class="conversation-bubble__markdown conversation-summary--markdown"
+                    v-html="renderMarkdown(getMessageText(message))"
+                  />
+                  <small>{{ formatTimeLabel(message.createdAt) }}</small>
                 </div>
               </template>
 
@@ -1057,6 +1083,44 @@ onMounted(bootstrap)
 
   &[data-expanded]::after {
     transform: rotate(-135deg) translateY(-2px);
+  }
+}
+
+.conversation-summary__guide {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0, 0, 0, 0.07);
+}
+
+.conversation-summary__guide-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  color: var(--van-text-color-2, #646566);
+  line-height: 1.5;
+}
+
+.conversation-summary__guide-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.conversation-summary__guide-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 12px;
+  background: var(--van-background-2, #f7f8fa);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 16px;
+  font-size: 12px;
+  color: var(--van-text-color, #323233);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+
+  &:active {
+    background: var(--van-primary-color-light, #e8f3ff);
+    border-color: var(--van-primary-color, #1989fa);
+    color: var(--van-primary-color, #1989fa);
   }
 }
 

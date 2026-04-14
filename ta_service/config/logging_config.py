@@ -6,7 +6,7 @@ import logging.handlers
 import os
 from pathlib import Path
 
-_LOG_DIR = Path(__file__).resolve().parents[2] / "logs"
+_LOG_DIR = Path(os.getenv("TA_SERVICE_LOG_DIR", "logs")).resolve()
 _LOG_FILE = _LOG_DIR / "ta_service.log"
 _ERROR_LOG_FILE = _LOG_DIR / "error.log"
 

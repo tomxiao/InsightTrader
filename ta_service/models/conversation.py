@@ -18,7 +18,6 @@ class ConversationSummary(BaseModel):
     title: str
     status: str
     updatedAt: str
-    lastReportId: str | None = None
 
 
 class ConversationMessage(BaseModel):
@@ -44,4 +43,3 @@ class PostConversationMessageRequest(BaseModel):
 
 class PostConversationMessageResponse(BaseModel):
     messages: list[ConversationMessage] = Field(default_factory=list)
-    reportId: str | None = None

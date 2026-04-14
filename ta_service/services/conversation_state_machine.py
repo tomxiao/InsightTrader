@@ -42,7 +42,6 @@ class ConversationStateMachine:
         to_status: str,
         title: str | None = None,
         task_id: object = _SENTINEL,
-        report_id: object = _SENTINEL,
         pending_resolution: object = _SENTINEL,
         confirmed_stock: object = _SENTINEL,
         confirmed_analysis_prompt: object = _SENTINEL,
@@ -71,7 +70,6 @@ class ConversationStateMachine:
             to_status=to_status,
             title=title,
             task_id=task_id,
-            report_id=report_id,
             pending_resolution=pending_resolution,
             confirmed_stock=confirmed_stock,
             confirmed_analysis_prompt=confirmed_analysis_prompt,
@@ -90,7 +88,6 @@ class ConversationStateMachine:
         user_id: str,
         to_status: str,
         task_id: object = _SENTINEL,
-        report_id: object = _SENTINEL,
     ) -> None:
         """
         跳过合法性检查的状态流转，仅供 Worker 等可信内部路径使用。
@@ -103,7 +100,6 @@ class ConversationStateMachine:
             user_id=user_id,
             to_status=to_status,
             task_id=task_id,
-            report_id=report_id,
         )
         logger.info(
             "conversation_state_transition_unchecked conversation_id=%s -> %s",
@@ -129,7 +125,6 @@ class ConversationStateMachine:
         to_status: str,
         title: str | None = None,
         task_id: object = _SENTINEL,
-        report_id: object = _SENTINEL,
         pending_resolution: object = _SENTINEL,
         confirmed_stock: object = _SENTINEL,
         confirmed_analysis_prompt: object = _SENTINEL,
@@ -141,8 +136,6 @@ class ConversationStateMachine:
             title=title,
             task_id=None if task_id is _SENTINEL else task_id,
             set_task_id=(task_id is not _SENTINEL),
-            report_id=None if report_id is _SENTINEL else report_id,
-            set_report_id=(report_id is not _SENTINEL),
             pending_resolution=None if pending_resolution is _SENTINEL else pending_resolution,
             set_pending_resolution=(pending_resolution is not _SENTINEL),
             confirmed_stock=None if confirmed_stock is _SENTINEL else confirmed_stock,

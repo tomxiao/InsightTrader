@@ -31,6 +31,10 @@ request.interceptors.response.use(
       }
     }
 
+    if (axios.isAxiosError(error) && error.response?.data?.detail) {
+      return Promise.reject(new Error(String(error.response.data.detail)))
+    }
+
     return Promise.reject(error)
   }
 )

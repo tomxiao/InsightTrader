@@ -13,10 +13,8 @@ from ta_service.models.message_types import MessageType
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
-from ta_service.repos.reports import ReportRepository
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.workers.launcher import spawn_analysis_task_runner
-from ta_service.workers.queue import AnalysisJobQueue
 
 logger = logging.getLogger(__name__)
 
@@ -30,8 +28,6 @@ class AnalysisService:
         task_repo: AnalysisTaskRepository,
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
-        report_repo: ReportRepository,
-        queue: AnalysisJobQueue,
         settings: Settings,
         state_machine: ConversationStateMachine,
         task_launcher: Callable[[str], object] = spawn_analysis_task_runner,
@@ -39,8 +35,6 @@ class AnalysisService:
         self.task_repo = task_repo
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
-        self.report_repo = report_repo
-        self.queue = queue
         self.settings = settings
         self.state_machine = state_machine
         self.task_launcher = task_launcher
@@ -86,17 +80,13 @@ class AnalysisService:
                 detail="Analysis ticker does not match the confirmed stock target",
             )
 
-        active_task = self.task_repo.get_active_for_user(user_id)
+        active_task = self.task_repo.get_active_for_user(
+            user_id, ttl_seconds=self.settings.analysis_task_ttl_seconds
+        )
         if active_task:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A task is already running for this user",
-            )
-
-        if not self.queue.acquire_user_lock(user_id):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="Unable to acquire analysis lock for this user",
             )
 
         task_doc = self.launch_analysis(
@@ -153,7 +143,6 @@ class AnalysisService:
                 "debug_skip_analysis task_id=%s ticker=%s conversation_id=%s",
                 document["taskId"], ticker, conversation_id,
             )
-            self.queue.release_user_lock(user_id)
             self.task_repo.update_status(
                 document["taskId"],
                 status="completed",
@@ -183,12 +172,17 @@ class AnalysisService:
             document["currentStep"] = "任务已启动"
             document["message"] = "任务已启动"
         except Exception as exc:
-            self.queue.release_user_lock(user_id)
             self.task_repo.update_status(
                 document["taskId"],
                 status="failed",
                 currentStep="任务启动失败",
                 message=str(exc),
+            )
+            self.state_machine.transition_unchecked(
+                conversation_id=conversation_id,
+                user_id=user_id,
+                to_status="failed",
+                task_id=document["taskId"],
             )
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
