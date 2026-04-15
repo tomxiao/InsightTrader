@@ -16,7 +16,12 @@
       "envFile": "${workspaceFolder}/.env",
       "python": "${workspaceFolder}/.venv/Scripts/python.exe",
       "justMyCode": false,
-      "console": "integratedTerminal"
+      "console": "integratedTerminal",
+      "serverReadyAction": {
+        "pattern": "Uvicorn running on (https?://\\S+|http://\\S+)",
+        "uriFormat": "%s/docs",
+        "action": "openExternally"
+      }
     },
     {
       "name": "前端 Vite dev (port 3100)",
@@ -27,14 +32,32 @@
       "cwd": "${workspaceFolder}/mobile_h5",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "浏览器打开前端 (http://localhost:3100)",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "start", "http://localhost:3100"],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
     }
   ],
   "compounds": [
     {
-      "name": "InsightTrader (前端 + 后端)",
+      "name": "InsightTrader 一键启动 (前端 + 后端)",
       "configurations": [
         "后端 ta-service (port 8100)",
         "前端 Vite dev (port 3100)"
+      ],
+      "stopAll": true
+    },
+    {
+      "name": "InsightTrader 一键启动并打开前端",
+      "configurations": [
+        "后端 ta-service (port 8100)",
+        "前端 Vite dev (port 3100)",
+        "浏览器打开前端 (http://localhost:3100)"
       ],
       "stopAll": true
     }

@@ -13,7 +13,6 @@ const authStore = useAuthStore()
 const loading = ref(false)
 const showPassword = ref(false)
 const keyboardActive = ref(false)
-const loginPageRef = ref<HTMLElement | null>(null)
 let focusResetFrame = 0
 
 const form = reactive({
@@ -29,34 +28,6 @@ const resetWindowScroll = () => {
   window.scrollTo(0, 0)
   document.documentElement.scrollTop = 0
   document.body.scrollTop = 0
-}
-
-const focusField = (fieldName: 'login-identity' | 'login-secret', event?: Event) => {
-  if (typeof window === 'undefined') {
-    return
-  }
-
-  const target = event?.target
-  if (target instanceof HTMLElement && target.closest('.login-page__field-toggle')) {
-    return
-  }
-
-  event?.preventDefault()
-
-  const input = loginPageRef.value?.querySelector<HTMLInputElement>(`input[name="${fieldName}"]`)
-  if (!input) {
-    return
-  }
-
-  input.focus({ preventScroll: true })
-  const end = input.value.length
-  input.setSelectionRange(end, end)
-
-  resetWindowScroll()
-  cancelAnimationFrame(focusResetFrame)
-  focusResetFrame = window.requestAnimationFrame(() => {
-    resetWindowScroll()
-  })
 }
 
 const scheduleFocusReset = () => {
@@ -144,7 +115,7 @@ const submit = async () => {
 
 <template>
   <MobilePageLayout :with-content-padding="false">
-    <section ref="loginPageRef" class="login-page" :class="{ 'is-keyboard-active': keyboardActive }">
+    <section class="login-page" :class="{ 'is-keyboard-active': keyboardActive }">
       <div class="login-page__content">
         <div class="login-page__brand">
           <div class="login-page__brand-mark" aria-hidden="true">
@@ -166,22 +137,18 @@ const submit = async () => {
             autocapitalize="none"
             autocorrect="off"
             :spellcheck="false"
-            @touchstart.stop.prevent="focusField('login-identity', $event)"
-            @click.stop.prevent="focusField('login-identity', $event)"
           />
           <van-field
             v-model="form.password"
             :class="['login-page__field', 'login-page__field--password', { 'is-visible': showPassword }]"
             name="login-secret"
-            type="text"
+            :type="showPassword ? 'text' : 'password'"
             inputmode="text"
             placeholder="请输入密码"
             autocomplete="off"
             autocapitalize="none"
             autocorrect="off"
             :spellcheck="false"
-            @touchstart.stop.prevent="focusField('login-secret', $event)"
-            @click.stop.prevent="focusField('login-secret', $event)"
           >
             <template #right-icon>
               <button
