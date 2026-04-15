@@ -170,91 +170,96 @@ onMounted(() => {
         <van-button plain size="small" class="admin-users-page__back" @click="router.push({ name: 'Conversation' })">
           <van-icon name="arrow-left" />
         </van-button>
-        <strong class="admin-users-page__header-title">用户管理</strong>
+        <div class="admin-users-page__header-main">
+          <strong class="admin-users-page__header-title">用户管理</strong>
+          <span class="admin-users-page__header-subtitle">管理账号状态与访问权限</span>
+        </div>
       </div>
     </template>
 
     <div class="admin-users-page">
-      <section class="admin-users-page__section">
-        <div class="admin-users-page__section-head">
-          <div class="admin-users-page__section-head-main">
-            <h3>用户列表</h3>
-            <p>系统内仅保留一个管理员账号，其余账号均按普通用户管理。</p>
-          </div>
-          <div class="admin-users-page__section-head-actions">
-            <span>{{ orderedUsers.length }} 个账号</span>
-            <van-button type="primary" round size="small" @click="createPopupOpen = true">新增用户</van-button>
-          </div>
-        </div>
-
-        <div v-if="loading" class="admin-users-page__empty">正在加载用户列表...</div>
-        <div v-else-if="!orderedUsers.length" class="admin-users-page__empty">当前还没有可管理的账号。</div>
-
-        <div v-else class="admin-users-page__list">
-          <article v-for="user in orderedUsers" :key="user.id" class="admin-user-card">
-            <div class="admin-user-card__top">
-              <div class="admin-user-card__identity">
-                <strong>{{ user.displayName || user.username }}</strong>
-                <small>@{{ user.username }}</small>
-              </div>
-              <div class="admin-user-card__badges">
-                <span
-                  class="admin-user-card__badge"
-                  :class="user.role === 'admin' ? 'is-admin' : 'is-user'"
-                >
-                  {{ user.role === 'admin' ? '管理员' : '普通用户' }}
-                </span>
-                <span
-                  class="admin-user-card__badge"
-                  :class="user.status === 'active' ? 'is-active' : 'is-disabled'"
-                >
-                  {{ user.status === 'active' ? '启用中' : '已禁用' }}
-                </span>
-              </div>
+      <div class="admin-users-page__body">
+        <section class="admin-users-page__section">
+          <div class="admin-users-page__section-head">
+            <div class="admin-users-page__section-head-main">
+              <h3>用户列表</h3>
+              <p>系统内仅保留一个管理员账号，其余账号均按普通用户管理。</p>
             </div>
-
-            <dl class="admin-user-card__meta">
-              <div>
-                <dt>创建时间</dt>
-                <dd>{{ formatTimeLabel(user.createdAt) || '未知' }}</dd>
-              </div>
-              <div>
-                <dt>最近登录</dt>
-                <dd>{{ user.lastLoginAt ? formatTimeLabel(user.lastLoginAt) : '未登录' }}</dd>
-              </div>
-              <div>
-                <dt>最近活跃</dt>
-                <dd>{{ user.lastActiveAt ? formatTimeLabel(user.lastActiveAt) : '暂无访问' }}</dd>
-              </div>
-            </dl>
-
-            <p v-if="user.role === 'admin'" class="admin-user-card__hint">
-              系统保留管理员账号，不支持禁用或修改角色。
-            </p>
-
-            <div class="admin-user-card__actions">
-              <van-button
-                plain
-                size="small"
-                :loading="resetSubmitting && resetTargetUser?.id === user.id"
-                @click="openResetPassword(user)"
-              >
-                重置密码
-              </van-button>
-              <van-button
-                v-if="user.role !== 'admin'"
-                size="small"
-                plain
-                :disabled="statusSubmittingId === user.id"
-                :loading="statusSubmittingId === user.id"
-                @click="toggleUserStatus(user)"
-              >
-                {{ user.status === 'active' ? '禁用用户' : '启用用户' }}
-              </van-button>
+            <div class="admin-users-page__section-head-actions">
+              <span>{{ orderedUsers.length }} 个账号</span>
+              <van-button type="primary" round size="small" @click="createPopupOpen = true">新增用户</van-button>
             </div>
-          </article>
-        </div>
-      </section>
+          </div>
+
+          <div v-if="loading" class="admin-users-page__empty">正在加载用户列表...</div>
+          <div v-else-if="!orderedUsers.length" class="admin-users-page__empty">当前还没有可管理的账号。</div>
+
+          <div v-else class="admin-users-page__list">
+            <article v-for="user in orderedUsers" :key="user.id" class="admin-user-card">
+              <div class="admin-user-card__top">
+                <div class="admin-user-card__identity">
+                  <strong>{{ user.displayName || user.username }}</strong>
+                  <small>@{{ user.username }}</small>
+                </div>
+                <div class="admin-user-card__badges">
+                  <span
+                    class="admin-user-card__badge"
+                    :class="user.role === 'admin' ? 'is-admin' : 'is-user'"
+                  >
+                    {{ user.role === 'admin' ? '管理员' : '普通用户' }}
+                  </span>
+                  <span
+                    class="admin-user-card__badge"
+                    :class="user.status === 'active' ? 'is-active' : 'is-disabled'"
+                  >
+                    {{ user.status === 'active' ? '启用中' : '已禁用' }}
+                  </span>
+                </div>
+              </div>
+
+              <dl class="admin-user-card__meta">
+                <div>
+                  <dt>创建时间</dt>
+                  <dd>{{ formatTimeLabel(user.createdAt) || '未知' }}</dd>
+                </div>
+                <div>
+                  <dt>最近登录</dt>
+                  <dd>{{ user.lastLoginAt ? formatTimeLabel(user.lastLoginAt) : '未登录' }}</dd>
+                </div>
+                <div>
+                  <dt>最近活跃</dt>
+                  <dd>{{ user.lastActiveAt ? formatTimeLabel(user.lastActiveAt) : '暂无访问' }}</dd>
+                </div>
+              </dl>
+
+              <p v-if="user.role === 'admin'" class="admin-user-card__hint">
+                系统保留管理员账号，不支持禁用或修改角色。
+              </p>
+
+              <div class="admin-user-card__actions">
+                <van-button
+                  plain
+                  size="small"
+                  :loading="resetSubmitting && resetTargetUser?.id === user.id"
+                  @click="openResetPassword(user)"
+                >
+                  重置密码
+                </van-button>
+                <van-button
+                  v-if="user.role !== 'admin'"
+                  size="small"
+                  plain
+                  :disabled="statusSubmittingId === user.id"
+                  :loading="statusSubmittingId === user.id"
+                  @click="toggleUserStatus(user)"
+                >
+                  {{ user.status === 'active' ? '禁用用户' : '启用用户' }}
+                </van-button>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
     </div>
 
     <van-popup v-model:show="createPopupOpen" round position="bottom">
@@ -322,34 +327,67 @@ onMounted(() => {
 <style scoped>
 .admin-users-page {
   flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.admin-users-page__body {
+  flex: 1;
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   padding: 0 var(--mobile-space-md) calc(24px + var(--mobile-safe-bottom));
 }
 
 .admin-users-page__header {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px var(--mobile-space-md) 4px;
+  gap: 10px;
+  padding: 8px clamp(24px, 6vw, 40px) 6px;
 }
 
 .admin-users-page__back:deep(.van-button) {
-  min-width: 36px;
-  width: 36px;
-  height: 36px;
+  min-width: 40px;
+  width: 40px;
+  height: 40px;
   padding: 0;
-  border-radius: 18px;
+  border-radius: 20px;
   background: rgba(255, 255, 255, 0.04);
   color: var(--mobile-color-text-secondary);
   border-color: rgba(255, 255, 255, 0.08);
 }
 
+.admin-users-page__back :deep(.van-icon) {
+  font-size: 18px;
+}
+
 .admin-users-page__header-title {
-  font-size: 14px;
-  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.admin-users-page__header-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.admin-users-page__header-subtitle {
+  color: var(--mobile-color-text-tertiary);
+  font-size: 11px;
+  line-height: 1.2;
 }
 
 .admin-users-page__section,
@@ -365,8 +403,10 @@ onMounted(() => {
 }
 
 .admin-users-page__section {
+  width: 100%;
+  max-width: 480px;
+  margin: 12px auto 0;
   padding: 14px;
-  margin-top: 12px;
 }
 
 .admin-users-page__section-head {
@@ -475,8 +515,8 @@ onMounted(() => {
 
 .admin-user-card__meta {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
   margin: 14px 0 0;
 }
 

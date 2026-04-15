@@ -59,9 +59,16 @@ class AnalysisTaskRunner:
             self.task_repo.update_status(
                 job.taskId,
                 stageId=stage_id,
+                nodeId=None,
                 currentStep=label,
                 message=label,
                 elapsedTime=elapsed,
+            )
+            self.task_event_repo.create(
+                task_id=job.taskId,
+                event_type="stage.started",
+                stage_id=stage_id,
+                payload={"message": label, "elapsedTime": elapsed},
             )
             self.message_repo.create(
                 conversation_id=job.conversationId,
@@ -71,15 +78,22 @@ class AnalysisTaskRunner:
             )
 
         def on_node_change(node_id: str, stage_id: str) -> None:
-            """Agent node 完成时更新 task 文档（仅影响 taskProgress，不写消息流）。"""
+            """Agent node 变化时更新 task 文档（仅影响 taskProgress，不写消息流）。"""
             label = resolve_node_message(node_id) or resolve_stage_message(stage_id) or node_id
             elapsed = int(time.time() - started_at)
             self.task_repo.update_status(
                 job.taskId,
                 stageId=stage_id,
+                nodeId=node_id,
                 currentStep=label,
                 message=label,
                 elapsedTime=elapsed,
+            )
+            self.task_event_repo.create(
+                task_id=job.taskId,
+                event_type="node.started",
+                stage_id=stage_id,
+                payload={"nodeId": node_id, "message": label, "elapsedTime": elapsed},
             )
 
         runner_request = RunnerRequest(
@@ -122,7 +136,7 @@ class AnalysisTaskRunner:
             conversation_id=job.conversationId,
             role="system",
             message_type=MessageType.TASK_STATUS,
-            content={"text": "已开始执行分析任务", "stageId": None},
+            content={"text": "投资团队已开始分析，正在为你整理关键信息", "stageId": None},
         )
 
         try:

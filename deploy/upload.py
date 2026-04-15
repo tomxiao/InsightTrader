@@ -1,5 +1,5 @@
 """
-推送后端代码到生产服务器（白名单模式，只传必要文件）
+推送生产运行所需后端代码到生产服务器（白名单模式）
 用法：python deploy/upload.py
 """
 
@@ -16,12 +16,10 @@ PEM = Path.home() / ".ssh" / "InsightTrader.pem"
 LOCAL_ROOT = Path(__file__).resolve().parent.parent  # deploy/ 的上级即项目根
 REMOTE_ROOT = "/opt/insighttrader"
 
-# 只上传这些顶层目录和文件（白名单）
+# 只上传生产运行所需的顶层目录和文件（白名单）
 INCLUDE_DIRS = {
     "ta_service",
     "tradingagents",
-    "tests",
-    "deploy",
 }
 INCLUDE_FILES = {
     "Dockerfile.ta_service",

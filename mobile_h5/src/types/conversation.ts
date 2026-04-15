@@ -21,6 +21,10 @@ export type ConversationStatus =
 export type ConversationMessageType = MessageType
 
 export interface TaskProgress {
+  status?: string
+  stageId?: string
+  nodeId?: string
+  displayState?: 'pending' | 'active' | 'stalled' | 'done' | 'failed' | string
   currentStep?: string
   message?: string
   elapsedTime?: number

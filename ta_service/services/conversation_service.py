@@ -73,7 +73,7 @@ class ConversationService:
             return None
         messages = self.message_repo.list_for_conversation(conversation_id)
         task_doc: dict | None = None
-        if document.get("status") == "analyzing" and document.get("currentTaskId"):
+        if document.get("currentTaskId"):
             task_doc = self.task_repo.get_by_task_id(document["currentTaskId"])
         return build_conversation_detail(document, messages, task_doc)
 

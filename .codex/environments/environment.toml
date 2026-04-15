@@ -9,3 +9,8 @@ script = ""
 name = "运行"
 icon = "run"
 command = ".\\start-dev.ps1"
+
+[[actions]]
+name = "停止"
+icon = "tool"
+command = ".\\stop-dev.ps1"

@@ -16,6 +16,7 @@ import { useConversationStore } from '@stores/conversation'
 import type { ConversationMessage, ConversationSummary } from '@/types/conversation'
 import {
   MessageType,
+  isTaskStatusContent,
   isTickerResolutionContent,
 } from '@/types/messageTypes'
 import type {
@@ -46,9 +47,47 @@ const composerFocused = ref(false)
 let composerBlurTimer = 0
 
 const currentConversation = computed(() => conversationStore.currentConversation)
-const currentMessages = computed(() => conversationStore.currentMessages)
+const rawMessages = computed(() => conversationStore.currentMessages)
 const isAnalyzing = computed(() => currentConversation.value.status === 'analyzing')
 const taskProgress = computed(() => currentConversation.value.taskProgress ?? null)
+
+const latestTaskStatusId = computed(() => {
+  const messages = rawMessages.value
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].messageType === MessageType.TASK_STATUS) {
+      return messages[i].id
+    }
+  }
+  return null
+})
+
+const shouldHideTaskStatusMessage = (message: ConversationMessage) => {
+  if (message.messageType !== MessageType.TASK_STATUS) return false
+  if (!isTaskStatusContent(message.messageType, message.content)) return false
+  return message.content.stageId == null
+}
+
+const taskStatusMessages = computed(() =>
+  rawMessages.value.filter(
+    message =>
+      message.messageType === MessageType.TASK_STATUS &&
+      !shouldHideTaskStatusMessage(message)
+  )
+)
+
+const firstTaskStatusId = computed(() => taskStatusMessages.value[0]?.id ?? null)
+
+const shouldRenderTaskStatusCard = (message: ConversationMessage) =>
+  message.messageType === MessageType.TASK_STATUS && message.id === firstTaskStatusId.value
+
+const shouldHideTaskStatusEntry = (message: ConversationMessage) =>
+  message.messageType === MessageType.TASK_STATUS && message.id !== firstTaskStatusId.value
+
+const currentMessages = computed(() =>
+  rawMessages.value.filter(
+    message => !shouldHideTaskStatusMessage(message) && !shouldHideTaskStatusEntry(message)
+  )
+)
 
 const isNearConversationBottom = (threshold = 96) => {
   const element = conversationBodyRef.value
@@ -170,17 +209,6 @@ const conversationHeaderSubtitleMap: Record<ConversationSummary['status'], strin
   report_explaining: '继续解读',
   failed: '分析未完成'
 }
-
-const latestTaskStatusId = computed(() => {
-  if (!isAnalyzing.value) return null
-  const messages = currentMessages.value
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (messages[i].messageType === MessageType.TASK_STATUS) {
-      return messages[i].id
-    }
-  }
-  return null
-})
 
 const isFollowupMode = computed(() =>
   ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
@@ -546,6 +574,132 @@ const getMessageText = (message: ConversationMessage) => {
   return 'text' in message.content ? (message.content.text ?? '') : ''
 }
 
+const stageStatusCopyMap: Record<string, string> = {
+  'analysts.market': '市场分析师梳理价格走势与技术信号',
+  'analysts.social': '情绪分析师整理社交舆情与市场情绪',
+  'analysts.news': '新闻分析师整理近期关键事件与新闻影响',
+  'analysts.fundamentals': '基本面分析师梳理财务表现、盈利与估值',
+  'research.debate': '研究团队汇总多方观点并形成研究结论',
+  'trader.plan': '交易分析师输出交易方案与执行思路',
+  'risk.debate': '风险团队评估下行风险与仓位约束',
+  'portfolio.decision': '投资总监输出最终投资决策'
+}
+
+const nodeStatusCopyMap: Record<string, string> = {
+  'Market Analyst': '市场分析师梳理价格走势与技术信号',
+  'Social Analyst': '情绪分析师整理社交舆情与市场情绪',
+  'Social Media Analyst': '情绪分析师整理社交舆情与市场情绪',
+  'News Analyst': '新闻分析师整理近期关键事件',
+  'Fundamentals Analyst': '基本面分析师梳理财务表现与估值',
+  'Bull Researcher': '研究团队形成看多观点',
+  'Bear Researcher': '研究团队形成看空观点',
+  'Research Manager': '研究团队汇总讨论结论',
+  Trader: '交易分析师输出交易方案与执行思路',
+  'Aggressive Analyst': '风险团队评估积极情景',
+  'Conservative Analyst': '风险团队评估保守情景',
+  'Neutral Analyst': '风险团队评估中性情景',
+  'Portfolio Manager': '投资总监输出最终结论'
+}
+
+const getTaskStatusCopy = (stageId?: string | null, nodeId?: string | null, fallback?: string) => {
+  if (nodeId) {
+    if (nodeId.startsWith('tools_')) return '投资团队补充数据与公开信息'
+    if (!nodeId.startsWith('Msg Clear ')) {
+      const nodeCopy = nodeStatusCopyMap[nodeId]
+      if (nodeCopy) return nodeCopy
+    }
+  }
+
+  if (stageId) {
+    const stageCopy = stageStatusCopyMap[stageId]
+    if (stageCopy) return stageCopy
+  }
+
+  return fallback || '投资团队推进分析'
+}
+
+const getSpeakerLabel = (message: ConversationMessage) => {
+  if (message.role === 'user') return '你'
+  if (message.messageType === MessageType.TASK_STATUS) return '投资团队'
+  return '小I'
+}
+
+const taskStatusStateLabelMap: Record<string, string> = {
+  pending: '准备中',
+  active: '进行中',
+  stalled: '处理中',
+  done: '已完成',
+  failed: '未完成'
+}
+
+const getTaskStatusState = () => {
+  if (currentConversation.value.status === 'report_ready') return 'done'
+  if (currentConversation.value.status === 'report_explaining') return 'done'
+  if (currentConversation.value.status === 'failed') return 'failed'
+  if (taskProgress.value?.displayState) return taskProgress.value.displayState
+  return 'active'
+}
+
+const isLatestTaskStatusMessage = (message: ConversationMessage) =>
+  message.id === latestTaskStatusId.value
+
+const getTaskStatusTimelineItems = () =>
+  taskStatusMessages.value.map(message => {
+    const content = isTaskStatusContent(message.messageType, message.content) ? message.content : null
+    return {
+      id: message.id,
+      title: getTaskStatusCopy(content?.stageId, null, getMessageText(message)),
+      time: formatTimeLabel(message.createdAt),
+      isCurrent:
+        getTaskStatusState() !== 'done' &&
+        getTaskStatusState() !== 'failed' &&
+        isLatestTaskStatusMessage(message)
+    }
+  })
+
+const getCurrentTaskStatusHeadline = () => {
+  const state = getTaskStatusState()
+  if (state === 'done') return '分析已完成'
+  if (state === 'failed') return '分析未能完成'
+  return (
+    getTaskStatusCopy(taskProgress.value?.stageId, taskProgress.value?.nodeId) ||
+    taskProgress.value?.currentStep ||
+    taskProgress.value?.message ||
+    getTaskStatusTimelineItems().find(item => item.isCurrent)?.title ||
+    '投资团队推进分析'
+  )
+}
+
+const getCurrentTaskStatusSubline = () => {
+  const state = getTaskStatusState()
+  if (state === 'failed') return '分析流程已中断，你可以稍后重新发起。'
+  if (state === 'done') return '分析流程已完成，团队已经给出最终结果。'
+  if (state === 'stalled') return '处理时间比平时更长，但任务仍在继续。'
+  return '投资团队正在持续处理数据、观点和风险信息。'
+}
+
+const getTaskStatusStateForMessage = (message: ConversationMessage) => {
+  if (!isLatestTaskStatusMessage(message)) return 'done'
+  return getTaskStatusState()
+}
+
+const isExpandedTaskStatusMessage = (message: ConversationMessage) =>
+  isLatestTaskStatusMessage(message) && getTaskStatusStateForMessage(message) !== 'done'
+
+const getTaskStatusStateLabel = (message: ConversationMessage) =>
+  taskStatusStateLabelMap[getTaskStatusStateForMessage(message)] || taskStatusStateLabelMap.active
+
+const shouldShowRemainingTime = computed(() => {
+  const remaining = taskProgress.value?.remainingTime
+  return typeof remaining === 'number' && remaining > 0 && getTaskStatusState() !== 'failed'
+})
+
+const shouldShowTaskStatusTimers = computed(() => {
+  if (!taskProgress.value) return false
+  const state = getTaskStatusState()
+  return state !== 'done' && state !== 'failed'
+})
+
 
 const formatDateTime = (iso: string | null | undefined): string => {
   if (!iso) return ''
@@ -824,7 +978,10 @@ onUnmounted(() => {
           >
             <template v-if="message.messageType === MessageType.SUMMARY_CARD">
               <section class="conversation-inline-card conversation-inline-card--summary">
-                <span class="conversation-inline-card__eyebrow">研究结果</span>
+                <div class="conversation-message-meta conversation-message-meta--card">
+                  <span>{{ getSpeakerLabel(message) }}</span>
+                  <span>{{ formatTimeLabel(message.createdAt) }}</span>
+                </div>
                 <h3 class="conversation-inline-card__title">投资总监的最终决策</h3>
                 <div
                   class="conversation-summary conversation-summary--markdown conversation-summary--result"
@@ -873,7 +1030,10 @@ onUnmounted(() => {
                     getResolutionStatus(message) === 'failed' || getResolutionStatus(message) === 'unsupported'
                 }"
               >
-                  <span class="conversation-inline-card__eyebrow">标的确认</span>
+                  <div class="conversation-message-meta conversation-message-meta--card">
+                    <span>{{ getSpeakerLabel(message) }}</span>
+                    <span>{{ formatTimeLabel(message.createdAt) }}</span>
+                  </div>
                   <h3 class="conversation-inline-card__title">{{ getResolutionCardTitle(message) }}</h3>
                   <p class="conversation-inline-card__description">{{ getMessageText(message) }}</p>
                   <p v-if="getResolutionFocusText(message)" class="conversation-inline-card__meta">
@@ -943,30 +1103,66 @@ onUnmounted(() => {
             </template>
 
             <template v-else-if="message.messageType === MessageType.TASK_STATUS">
-              <div class="task-status-wrapper">
-                <div class="conversation-notice conversation-notice--progress">
-                  <span class="conversation-notice__dot" aria-hidden="true" />
-                  <p>{{ getMessageText(message) }}</p>
+              <div v-if="shouldRenderTaskStatusCard(message)" class="task-status-wrapper">
+                <div
+                  class="task-status-card"
+                  :class="`is-${getTaskStatusState()}`"
+                >
+                  <div class="task-status-card__head">
+                    <div class="task-status-card__indicator" aria-hidden="true" />
+                    <div class="task-status-card__title-wrap">
+                      <span class="task-status-card__eyebrow">投资团队进度</span>
+                      <p class="task-status-card__title">{{ getCurrentTaskStatusHeadline() }}</p>
+                    </div>
+                    <span class="task-status-card__state">{{ taskStatusStateLabelMap[getTaskStatusState()] || taskStatusStateLabelMap.active }}</span>
+                  </div>
+                  <p class="task-status-card__subtitle">{{ getCurrentTaskStatusSubline() }}</p>
+                  <div
+                    v-if="getTaskStatusTimelineItems().length > 1"
+                    class="task-status-timeline"
+                  >
+                    <div
+                      v-for="item in getTaskStatusTimelineItems()"
+                      :key="item.id"
+                      class="task-status-timeline__item"
+                      :class="{ 'is-current': item.isCurrent }"
+                    >
+                      <span class="task-status-timeline__dot" aria-hidden="true" />
+                      <div class="task-status-timeline__body">
+                        <div class="task-status-timeline__row">
+                          <p class="task-status-timeline__title">{{ item.title }}</p>
+                          <span class="task-status-timeline__time">{{ item.time }}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
                 <div
-                  v-if="message.id === latestTaskStatusId && taskProgress"
-                  class="task-inline-timer"
+                  v-if="shouldShowTaskStatusTimers"
+                  class="task-status-card__timers"
                 >
-                  <span>已用 {{ formatSeconds(taskProgress.elapsedTime) }}</span>
-                  <span v-if="taskProgress.remainingTime">· 预计剩余 {{ formatSeconds(taskProgress.remainingTime) }}</span>
+                  <span>已用 {{ formatSeconds(taskProgress?.elapsedTime) }}</span>
+                  <span v-if="shouldShowRemainingTime">· 预计剩余 {{ formatSeconds(taskProgress?.remainingTime) }}</span>
                 </div>
               </div>
             </template>
 
             <template v-else-if="message.messageType === MessageType.ERROR">
-              <div class="conversation-notice conversation-notice--error">
-                <span class="conversation-notice__dot" aria-hidden="true">!</span>
+              <div class="conversation-bubble conversation-bubble--error">
+                <div class="conversation-message-meta">
+                  <span>{{ getSpeakerLabel(message) }}</span>
+                  <span>{{ formatTimeLabel(message.createdAt) }}</span>
+                </div>
                 <p>{{ getMessageText(message) }}</p>
               </div>
             </template>
 
             <template v-else-if="message.messageType === MessageType.INSIGHT_REPLY">
               <div class="conversation-bubble conversation-bubble--insight">
+                <div class="conversation-message-meta">
+                  <span>{{ getSpeakerLabel(message) }}</span>
+                  <span>{{ formatTimeLabel(message.createdAt) }}</span>
+                </div>
                 <div
                   class="conversation-bubble__markdown-shell"
                   :class="{ 'is-collapsed': isInsightReplyCollapsed(message.id) }"
@@ -983,17 +1179,16 @@ onUnmounted(() => {
                   :aria-label="isInsightReplyCollapsed(message.id) ? '展开全文' : '收起全文'"
                   @click="toggleInsightReply(message.id)"
                 ><span class="conversation-bubble__toggle-icon" aria-hidden="true" /></button>
-                <small>{{ formatTimeLabel(message.createdAt) }}</small>
               </div>
             </template>
 
             <template v-else>
               <div class="conversation-bubble">
-                <span v-if="message.role !== 'assistant'" class="conversation-bubble__role">
-                  {{ message.role === 'user' ? '你' : '系统' }}
-                </span>
+                <div class="conversation-message-meta">
+                  <span>{{ getSpeakerLabel(message) }}</span>
+                  <span>{{ formatTimeLabel(message.createdAt) }}</span>
+                </div>
                 <p>{{ getMessageText(message) }}</p>
-                <small>{{ formatTimeLabel(message.createdAt) }}</small>
               </div>
             </template>
           </article>
@@ -1298,17 +1493,8 @@ onUnmounted(() => {
 }
 
 .conversation-bubble p,
-.conversation-bubble small,
 .conversation-summary {
   margin: 0;
-}
-
-.conversation-bubble__role {
-  display: inline-block;
-  margin-bottom: 6px;
-  color: var(--mobile-color-text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
 }
 
 .conversation-bubble p {
@@ -1329,20 +1515,25 @@ onUnmounted(() => {
   color: var(--mobile-color-text-secondary);
 }
 
-.conversation-bubble small {
-  display: block;
-  margin-top: 6px;
+.conversation-message-meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
   color: var(--mobile-color-text-tertiary);
   font-size: 11px;
+  line-height: 1.4;
+  font-weight: 600;
 }
 
-.conversation-message--assistant .conversation-bubble small,
-.conversation-message--system .conversation-bubble small {
-  margin-top: 4px;
+.conversation-message-meta--card {
+  margin-bottom: 8px;
 }
 
-.conversation-message--system .conversation-bubble small {
-  display: none;
+.conversation-message-meta span:last-child {
+  flex-shrink: 0;
+  opacity: 0.8;
 }
 
 .conversation-notice {
@@ -1368,34 +1559,260 @@ onUnmounted(() => {
   text-align: center;
 }
 
-.conversation-notice--progress p {
-  color: var(--mobile-color-text-tertiary);
-}
-
-.conversation-notice--progress .conversation-notice__dot {
-  color: var(--mobile-color-text-tertiary);
-}
-
-.conversation-notice--progress .conversation-notice__dot::before {
-  content: '·';
-  font-size: 18px;
-}
-
 .task-status-wrapper {
   display: flex;
   flex-direction: column;
   width: 100%;
+  gap: 6px;
 }
 
-.task-inline-timer {
+.task-status-card {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.task-status-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.task-status-card__indicator {
+  width: 10px;
+  height: 10px;
+  margin-top: 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: rgba(93, 139, 255, 0.88);
+  box-shadow:
+    0 0 0 4px rgba(93, 139, 255, 0.16),
+    0 0 14px rgba(93, 139, 255, 0.38);
+}
+
+.task-status-card.is-active .task-status-card__indicator,
+.task-status-card.is-stalled .task-status-card__indicator {
+  animation: task-status-pulse 1.5s ease-in-out infinite;
+}
+
+.task-status-card.is-done .task-status-card__indicator {
+  background: rgba(69, 214, 156, 0.92);
+  box-shadow: 0 0 0 4px rgba(69, 214, 156, 0.12);
+}
+
+.task-status-card.is-failed .task-status-card__indicator {
+  background: rgba(255, 107, 107, 0.92);
+  box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.12);
+}
+
+.task-status-card__title-wrap {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-status-card__eyebrow {
+  display: inline-block;
+  margin-bottom: 5px;
+  color: var(--mobile-color-text-tertiary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.task-status-card__title,
+.task-status-card__subtitle {
+  margin: 0;
+}
+
+.task-status-card__title {
+  color: var(--mobile-color-text);
+  font-size: 14px;
+  line-height: 1.55;
+  font-weight: 600;
+}
+
+.task-status-card__subtitle {
+  margin-top: 8px;
+  padding-left: 20px;
+  color: var(--mobile-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.task-status-card__state {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(93, 139, 255, 0.14);
+  color: rgba(185, 211, 255, 0.96);
+  font-size: 11px;
+  line-height: 1.5;
+  font-weight: 600;
+}
+
+.task-status-card.is-done .task-status-card__state {
+  background: rgba(69, 214, 156, 0.14);
+  color: rgba(184, 255, 223, 0.96);
+}
+
+.task-status-card.is-failed .task-status-card__state {
+  background: rgba(255, 107, 107, 0.14);
+  color: rgba(255, 210, 210, 0.96);
+}
+
+.task-status-card__timers {
   display: flex;
   gap: 6px;
-  padding: 0 0 4px 20px;
+  padding: 0 4px 4px 20px;
   font-size: 11px;
   line-height: 1.6;
   color: var(--mobile-color-text-tertiary);
   opacity: 0.75;
   overflow: hidden;
+}
+
+.task-status-timeline {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.task-status-timeline__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  opacity: 0.72;
+}
+
+.task-status-timeline__item.is-current {
+  opacity: 1;
+}
+
+.task-status-timeline__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  position: relative;
+  border-radius: 999px;
+  flex-shrink: 0;
+  background: rgba(69, 214, 156, 0.88);
+  box-shadow: 0 0 0 4px rgba(69, 214, 156, 0.1);
+}
+
+.task-status-timeline__item.is-current .task-status-timeline__dot {
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.task-status-timeline__item.is-current .task-status-timeline__dot::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 2px;
+  height: 2px;
+  border-radius: 999px;
+  background: rgba(93, 139, 255, 0.98);
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 -4px 0 0 rgba(93, 139, 255, 1),
+    2.8px -2.8px 0 0 rgba(93, 139, 255, 0.9),
+    4px 0 0 0 rgba(93, 139, 255, 0.78),
+    2.8px 2.8px 0 0 rgba(93, 139, 255, 0.62),
+    0 4px 0 0 rgba(93, 139, 255, 0.48),
+    -2.8px 2.8px 0 0 rgba(93, 139, 255, 0.36),
+    -4px 0 0 0 rgba(93, 139, 255, 0.28),
+    -2.8px -2.8px 0 0 rgba(93, 139, 255, 0.2);
+  filter: drop-shadow(0 0 4px rgba(93, 139, 255, 0.22));
+  animation: task-status-spinner 0.8s linear infinite;
+}
+
+.task-status-timeline__item.is-current .task-status-timeline__dot::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  border-radius: 999px;
+  background: rgba(93, 139, 255, 0.18);
+  box-shadow: 0 0 6px rgba(93, 139, 255, 0.2);
+}
+
+.task-status-timeline__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.task-status-timeline__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.task-status-timeline__title,
+.task-status-timeline__time {
+  margin: 0;
+}
+
+.task-status-timeline__title {
+  color: var(--mobile-color-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.task-status-timeline__item.is-current .task-status-timeline__title {
+  color: var(--mobile-color-text);
+  font-weight: 600;
+}
+
+.task-status-timeline__time {
+  flex-shrink: 0;
+  color: var(--mobile-color-text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@keyframes task-status-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow:
+      0 0 0 4px rgba(93, 139, 255, 0.18),
+      0 0 14px rgba(93, 139, 255, 0.42);
+  }
+
+  35% {
+    transform: scale(1.18);
+    opacity: 1;
+    box-shadow:
+      0 0 0 8px rgba(93, 139, 255, 0.14),
+      0 0 22px rgba(93, 139, 255, 0.52);
+  }
+
+  70% {
+    transform: scale(0.92);
+    opacity: 0.82;
+    box-shadow:
+      0 0 0 5px rgba(93, 139, 255, 0.1),
+      0 0 12px rgba(93, 139, 255, 0.3);
+  }
+}
+
+@keyframes task-status-spinner {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .conversation-notice--error p {
@@ -1404,6 +1821,10 @@ onUnmounted(() => {
 
 .conversation-notice--error .conversation-notice__dot {
   color: rgba(255, 107, 107, 0.85);
+}
+
+.conversation-bubble--error p {
+  color: rgba(255, 210, 210, 0.96);
 }
 
 .conversation-summary {
@@ -1595,15 +2016,6 @@ onUnmounted(() => {
   border: 1px solid rgba(93, 139, 255, 0.1);
   border-radius: 18px;
   background: rgba(93, 139, 255, 0.04);
-}
-
-.conversation-inline-card__eyebrow {
-  display: inline-block;
-  margin-bottom: 4px;
-  color: var(--mobile-color-text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
 }
 
 .conversation-inline-card__title,

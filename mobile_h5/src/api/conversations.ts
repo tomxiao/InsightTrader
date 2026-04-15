@@ -9,6 +9,8 @@ import type { ResolutionConfirmRequest, ResolutionRequest, ResolutionResponse } 
 
 import { request } from './request'
 
+const followupRequestTimeoutMs = 240000
+
 export const conversationsApi = {
   createConversation(payload: CreateConversationRequest) {
     return request.post<ConversationSummary>('/conversations', payload).then(response => response.data)
@@ -21,17 +23,23 @@ export const conversationsApi = {
   },
   postMessage(conversationId: string, payload: PostConversationMessageRequest) {
     return request
-      .post<PostConversationMessageResponse>(`/conversations/${conversationId}/messages`, payload, { timeout: 60000 })
+      .post<PostConversationMessageResponse>(`/conversations/${conversationId}/messages`, payload, {
+        timeout: followupRequestTimeoutMs
+      })
       .then(response => response.data)
   },
   resolve(conversationId: string, payload: ResolutionRequest) {
     return request
-      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution`, payload, { timeout: 60000 })
+      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution`, payload, {
+        timeout: followupRequestTimeoutMs
+      })
       .then(response => response.data)
   },
   confirmResolution(conversationId: string, payload: ResolutionConfirmRequest) {
     return request
-      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution/confirm`, payload, { timeout: 60000 })
+      .post<ResolutionResponse>(`/conversations/${conversationId}/resolution/confirm`, payload, {
+        timeout: followupRequestTimeoutMs
+      })
       .then(response => response.data)
   },
   deleteConversation(conversationId: string) {

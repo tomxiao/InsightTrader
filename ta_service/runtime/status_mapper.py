@@ -15,29 +15,30 @@ MOBILE_STATUS_MAP = {
 }
 
 STAGE_LABELS = {
-    "analysts.market": "正在获取市场与技术数据",
-    "analysts.social": "正在分析社交与情绪信号",
-    "analysts.news": "正在整理新闻与事件影响",
-    "analysts.fundamentals": "正在分析基本面与财务数据",
-    "research.debate": "正在生成多智能体研究结论",
-    "trader.plan": "正在整理交易计划",
-    "risk.debate": "正在进行风险辩论",
-    "portfolio.decision": "正在生成最终决策",
+    "analysts.market": "市场分析师梳理价格走势与技术信号",
+    "analysts.social": "情绪分析师整理社交舆情与市场情绪",
+    "analysts.news": "新闻分析师整理近期关键事件与新闻影响",
+    "analysts.fundamentals": "基本面分析师梳理财务表现、盈利与估值",
+    "research.debate": "研究团队汇总多方观点并形成研究结论",
+    "trader.plan": "交易分析师生成交易方案与执行思路",
+    "risk.debate": "风险团队评估下行风险与仓位约束",
+    "portfolio.decision": "投资总监输出最终投资决策",
 }
 
 NODE_LABELS = {
-    "Market Analyst": "市场分析师正在获取数据",
-    "Social Media Analyst": "社交媒体分析师正在获取数据",
-    "News Analyst": "新闻分析师正在获取数据",
-    "Fundamentals Analyst": "基本面分析师正在获取数据",
-    "Bull Researcher": "多方研究员正在分析",
-    "Bear Researcher": "空方研究员正在分析",
-    "Research Manager": "研究经理正在汇总结论",
-    "Trader": "交易员正在制定计划",
-    "Aggressive Analyst": "激进分析师正在评估风险",
-    "Conservative Analyst": "保守分析师正在评估风险",
-    "Neutral Analyst": "中立分析师正在评估风险",
-    "Portfolio Manager": "投资组合经理正在做最终决策",
+    "Market Analyst": "市场分析师梳理价格走势与技术信号",
+    "Social Analyst": "情绪分析师整理社交舆情与市场情绪",
+    "Social Media Analyst": "情绪分析师整理社交舆情与市场情绪",
+    "News Analyst": "新闻分析师整理近期关键事件",
+    "Fundamentals Analyst": "基本面分析师梳理财务表现与估值",
+    "Bull Researcher": "研究团队形成看多观点",
+    "Bear Researcher": "研究团队形成看空观点",
+    "Research Manager": "研究团队汇总讨论结论",
+    "Trader": "交易分析师生成交易方案",
+    "Aggressive Analyst": "风险团队评估积极情景",
+    "Conservative Analyst": "风险团队评估保守情景",
+    "Neutral Analyst": "风险团队评估中性情景",
+    "Portfolio Manager": "投资总监输出最终结论",
 }
 
 
@@ -54,7 +55,28 @@ def resolve_stage_message(stage_id: str | None) -> str | None:
 def resolve_node_message(node_id: str | None) -> str | None:
     if not node_id:
         return None
+    if node_id.startswith("tools_"):
+        return "投资团队补充数据与公开信息"
+    if node_id.startswith("Msg Clear "):
+        return None
     return NODE_LABELS.get(node_id)
+
+
+def resolve_display_state(document: dict) -> str:
+    status = normalize_mobile_status(document["status"])
+    if status == "completed":
+        return "done"
+    if status == "failed":
+        return "failed"
+
+    updated_at = _parse_iso_datetime(document.get("updatedAt"))
+    if updated_at:
+        now = datetime.now(timezone.utc)
+        stalled_for = (now - updated_at).total_seconds()
+        if stalled_for >= 60:
+            return "stalled"
+
+    return "active" if status in {"pending", "running"} else status
 
 
 def _parse_iso_datetime(value: str | None) -> datetime | None:

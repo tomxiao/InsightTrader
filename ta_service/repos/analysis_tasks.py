@@ -35,6 +35,7 @@ class AnalysisTaskRepository:
             "selectedAnalysts": selected_analysts or ["market", "social", "news", "fundamentals"],
             "status": "queued",
             "stageId": None,
+            "nodeId": None,
             "currentStep": "任务已进入队列",
             "message": "任务已进入队列",
             "elapsedTime": 0,

@@ -7,7 +7,10 @@ from ta_service.models.conversation import (
     TaskProgress,
 )
 from ta_service.runtime.status_mapper import (
+    normalize_mobile_status,
+    resolve_display_state,
     resolve_elapsed_time,
+    resolve_node_message,
     resolve_remaining_time,
     resolve_stage_message,
 )
@@ -34,9 +37,19 @@ def build_conversation_summary(document: dict) -> ConversationSummary:
 
 def build_task_progress(task_doc: dict) -> TaskProgress:
     elapsed = resolve_elapsed_time(task_doc)
-    current_step = task_doc.get("currentStep") or resolve_stage_message(task_doc.get("stageId"))
-    message = task_doc.get("message") or current_step
+    stage_id = task_doc.get("stageId")
+    node_id = task_doc.get("nodeId")
+    current_step = (
+        task_doc.get("currentStep")
+        or resolve_node_message(node_id)
+        or resolve_stage_message(stage_id)
+    )
+    message = task_doc.get("message") or resolve_node_message(node_id) or current_step
     return TaskProgress(
+        status=normalize_mobile_status(task_doc.get("status", "")),
+        stageId=stage_id,
+        nodeId=node_id,
+        displayState=resolve_display_state(task_doc),
         currentStep=current_step,
         message=message,
         elapsedTime=elapsed,
@@ -51,7 +64,7 @@ def build_conversation_detail(
 ) -> ConversationDetail:
     summary = build_conversation_summary(document)
     task_progress: TaskProgress | None = None
-    if summary.status == "analyzing" and task_doc:
+    if summary.status in {"analyzing", "report_ready", "report_explaining", "failed"} and task_doc:
         task_progress = build_task_progress(task_doc)
     return ConversationDetail(
         **summary.model_dump(),
