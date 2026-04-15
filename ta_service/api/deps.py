@@ -70,8 +70,9 @@ def get_auth_service(
 
 def get_admin_user_service(
     user_repo: UserRepository = Depends(get_user_repository),
+    session_repo: UserSessionRepository = Depends(get_user_session_repository),
 ) -> AdminUserService:
-    return AdminUserService(user_repo=user_repo)
+    return AdminUserService(user_repo=user_repo, session_repo=session_repo)
 
 
 def get_access_token(

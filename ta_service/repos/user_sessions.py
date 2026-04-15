@@ -51,6 +51,18 @@ class UserSessionRepository:
             return None
         return document
 
+    def get_last_seen_map(self, user_ids: list[str]) -> dict[str, str]:
+        if not user_ids:
+            return {}
+
+        pipeline = [
+            {"$match": {"userId": {"$in": user_ids}, "lastSeenAt": {"$type": "string"}}},
+            {"$sort": {"lastSeenAt": -1}},
+            {"$group": {"_id": "$userId", "lastSeenAt": {"$first": "$lastSeenAt"}}},
+        ]
+        records = list(self.collection.aggregate(pipeline))
+        return {record["_id"]: record["lastSeenAt"] for record in records if record.get("lastSeenAt")}
+
     def touch(self, session_id: str) -> None:
         self.collection.update_one(
             {"id": session_id},

@@ -222,6 +222,10 @@ onMounted(() => {
                 <dt>最近登录</dt>
                 <dd>{{ user.lastLoginAt ? formatTimeLabel(user.lastLoginAt) : '未登录' }}</dd>
               </div>
+              <div>
+                <dt>最近活跃</dt>
+                <dd>{{ user.lastActiveAt ? formatTimeLabel(user.lastActiveAt) : '暂无访问' }}</dd>
+              </div>
             </dl>
 
             <p v-if="user.role === 'admin'" class="admin-user-card__hint">

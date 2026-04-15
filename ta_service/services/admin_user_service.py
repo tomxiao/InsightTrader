@@ -9,16 +9,26 @@ from ta_service.models.admin_users import (
     ResetManagedUserPasswordRequest,
     UpdateManagedUserStatusRequest,
 )
+from ta_service.repos.user_sessions import UserSessionRepository
 from ta_service.repos.users import UserRepository
 from ta_service.services.auth_security import hash_password
 
 
 class AdminUserService:
-    def __init__(self, *, user_repo: UserRepository):
+    def __init__(
+        self,
+        *,
+        user_repo: UserRepository,
+        session_repo: UserSessionRepository,
+    ):
         self.user_repo = user_repo
+        self.session_repo = session_repo
 
     def list_users(self) -> list[ManagedUser]:
         documents = self.user_repo.list_users()
+        last_seen_map = self.session_repo.get_last_seen_map([item["id"] for item in documents])
+        for item in documents:
+            item["lastActiveAt"] = last_seen_map.get(item["id"])
         documents.sort(
             key=lambda item: (
                 0 if item.get("role") == "admin" else 1,

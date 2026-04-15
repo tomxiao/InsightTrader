@@ -5,6 +5,7 @@ export interface ManagedUser {
   role: 'user' | 'admin'
   status: 'active' | 'disabled'
   lastLoginAt?: string | null
+  lastActiveAt?: string | null
   createdAt: string
   updatedAt: string
 }

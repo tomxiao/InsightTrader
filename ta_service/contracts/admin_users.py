@@ -11,6 +11,7 @@ def build_managed_user(document: dict) -> ManagedUser:
         role=document.get("role", "user"),
         status=document.get("status", "active"),
         lastLoginAt=document.get("lastLoginAt"),
+        lastActiveAt=document.get("lastActiveAt"),
         createdAt=document["createdAt"],
         updatedAt=document["updatedAt"],
     )

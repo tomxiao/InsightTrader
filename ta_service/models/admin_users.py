@@ -12,6 +12,7 @@ class ManagedUser(BaseModel):
     role: Literal["user", "admin"]
     status: Literal["active", "disabled"]
     lastLoginAt: str | None = None
+    lastActiveAt: str | None = None
     createdAt: str
     updatedAt: str
 
