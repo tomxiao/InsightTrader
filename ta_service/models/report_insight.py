@@ -17,6 +17,9 @@ class ReportInsightContext(BaseModel):
     available_sections: list[str] = Field(default_factory=list)
     """当前报告可用的章节名列表，传给 LLM 作为工具调用的候选范围。"""
 
+    summary_text: str | None = None
+    """轻量摘要文本。正常路径下优先供 Agent 直接回答使用。"""
+
     report_sections: dict[str, str] = Field(default_factory=dict)
     """降级专用：无磁盘报告时使用 SUMMARY_CARD 文本填充此字段。正常路径为空。"""
 

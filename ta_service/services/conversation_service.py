@@ -170,6 +170,7 @@ class ConversationService:
         trade_date = ""
         trace_dir: str | None = None
         available_sections: list[str] = []
+        summary_text: str | None = self._get_summary_text(all_messages=all_messages)
         report_sections: dict[str, str] = {}
 
         task_id = conversation.get("currentTaskId")
@@ -186,7 +187,6 @@ class ConversationService:
 
         # 降级：无磁盘报告时使用 SUMMARY_CARD 文本作为单章节上下文
         if not trace_dir and not available_sections:
-            summary_text = self._get_summary_text(all_messages=all_messages)
             if summary_text:
                 report_sections = {"executive_summary": summary_text}
                 logger.info(
@@ -203,6 +203,7 @@ class ConversationService:
             trade_date=trade_date,
             trace_dir=trace_dir,
             available_sections=available_sections,
+            summary_text=summary_text,
             report_sections=report_sections,
             conversation_history=history,
         )

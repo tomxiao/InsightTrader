@@ -218,10 +218,27 @@ const canSubmitPrompt = computed(() =>
   Boolean(promptModel.value.trim()) && !sendingLoading.value && !isAnalyzing.value
 )
 
+const INSIGHT_REPLY_COLLAPSE_MIN_LENGTH = 220
+const INSIGHT_REPLY_COLLAPSE_MIN_LINES = 6
+
 const collapsedInsightReplyIds = ref(new Set<string>())
 
 const getInsightReplyMessages = () =>
   currentMessages.value.filter(message => message.messageType === MessageType.INSIGHT_REPLY)
+
+const shouldEnableInsightReplyCollapse = (message: ConversationMessage): boolean => {
+  if (message.messageType !== MessageType.INSIGHT_REPLY) return false
+
+  const text = getMessageText(message).trim()
+  if (!text) return false
+
+  const lineCount = text
+    .split('\n')
+    .map(line => line.trim())
+    .filter(Boolean).length
+
+  return text.length > INSIGHT_REPLY_COLLAPSE_MIN_LENGTH || lineCount > INSIGHT_REPLY_COLLAPSE_MIN_LINES
+}
 
 const getLatestInsightReplyId = (): string => {
   const insightReplies = getInsightReplyMessages()
@@ -230,7 +247,7 @@ const getLatestInsightReplyId = (): string => {
 }
 
 const initializeInsightReplyCollapseState = () => {
-  const insightReplies = getInsightReplyMessages()
+  const insightReplies = getInsightReplyMessages().filter(shouldEnableInsightReplyCollapse)
   if (insightReplies.length <= 1) {
     collapsedInsightReplyIds.value = new Set()
     return
@@ -241,12 +258,18 @@ const initializeInsightReplyCollapseState = () => {
   )
 }
 
-const isInsightReplyCollapsed = (messageId: string): boolean =>
-  collapsedInsightReplyIds.value.has(messageId)
+const isInsightReplyCollapsed = (messageId: string): boolean => {
+  const message = currentMessages.value.find(item => item.id === messageId)
+  if (!message || !shouldEnableInsightReplyCollapse(message)) return false
+  return collapsedInsightReplyIds.value.has(messageId)
+}
 
 const setInsightReplyCollapsed = (messageId: string, collapsed: boolean) => {
+  const message = currentMessages.value.find(item => item.id === messageId)
   const next = new Set(collapsedInsightReplyIds.value)
-  if (collapsed) {
+  if (!message || !shouldEnableInsightReplyCollapse(message)) {
+    next.delete(messageId)
+  } else if (collapsed) {
     next.add(messageId)
   } else {
     next.delete(messageId)
@@ -1165,7 +1188,10 @@ onUnmounted(() => {
                 </div>
                 <div
                   class="conversation-bubble__markdown-shell"
-                  :class="{ 'is-collapsed': isInsightReplyCollapsed(message.id) }"
+                  :class="{
+                    'is-collapsed':
+                      shouldEnableInsightReplyCollapse(message) && isInsightReplyCollapsed(message.id),
+                  }"
                 >
                   <div
                     class="conversation-summary conversation-summary--markdown conversation-bubble__markdown"
@@ -1173,6 +1199,7 @@ onUnmounted(() => {
                   />
                 </div>
                 <button
+                  v-if="shouldEnableInsightReplyCollapse(message)"
                   class="conversation-bubble__toggle"
                   :class="{ 'is-collapsed': isInsightReplyCollapsed(message.id) }"
                   type="button"

@@ -1,0 +1,4 @@
+interface:
+  display_name: "PRD Writer"
+  short_description: "Write structured, engineering-ready PRDs."
+  default_prompt: "Use $prd-writer to draft or refine a PRD with clear scope, rules, interfaces, and acceptance criteria."

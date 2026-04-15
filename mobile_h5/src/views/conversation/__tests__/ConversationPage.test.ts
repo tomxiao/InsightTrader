@@ -361,4 +361,70 @@ describe('ConversationPage acceptance', () => {
     expect(wrapper.find('.task-status-card__title').text()).toBe('交易分析师输出交易方案与执行思路')
     expect(wrapper.text()).not.toContain('交易分析师生成交易方案')
   })
+
+  it('keeps short insight replies fully visible without a collapse toggle', async () => {
+    const detail: ConversationDetail = {
+      ...baseConversation,
+      status: 'report_explaining',
+      messages: [
+        createMessage({
+          id: 'insight-short',
+          messageType: MessageType.INSIGHT_REPLY,
+          content: '结论偏谨慎，短线更适合等回调后再看确认信号。',
+          createdAt: '2026-04-15T08:33:00.000Z',
+        }),
+      ],
+    }
+
+    const wrapper = await mountConversationPage(detail)
+
+    expect(wrapper.find('.conversation-bubble__toggle').exists()).toBe(false)
+    expect(wrapper.find('.conversation-bubble__markdown-shell').classes()).not.toContain('is-collapsed')
+  })
+
+  it('keeps older long insight replies collapsed while leaving the latest expanded', async () => {
+    const detail: ConversationDetail = {
+      ...baseConversation,
+      status: 'report_explaining',
+      messages: [
+        createMessage({
+          id: 'insight-long-old',
+          messageType: MessageType.INSIGHT_REPLY,
+          content: [
+            '先看结论：中期趋势还没有彻底走坏，但短线波动会更大。',
+            '第一，市场章节提到价格已经接近前高压力位，继续上冲需要更强成交量配合。',
+            '第二，新闻章节显示最新催化更偏情绪驱动，不足以单独支撑估值再扩张。',
+            '第三，风险章节强调如果本周财报或指引不及预期，回撤会放大。',
+            '第四，交易计划建议不要追高，优先等待回踩确认再考虑分批介入。',
+            '第五，如果已经持有，可以把关注点放在量价是否继续背离。',
+            '第六，整体上更像高位震荡而不是确定性突破。',
+          ].join('\n'),
+          createdAt: '2026-04-15T08:33:00.000Z',
+        }),
+        createMessage({
+          id: 'insight-long-latest',
+          messageType: MessageType.INSIGHT_REPLY,
+          content: [
+            '更直接地说，这份报告暂时不支持立刻加仓。',
+            '第一，风险收益比没有明显打开。',
+            '第二，短线催化和中期基本面之间还有验证空档。',
+            '第三，交易计划更偏向等待而不是主动进攻。',
+            '第四，如果你要继续追问，可以重点问支撑位、风险点或仓位建议。',
+            '第五，目前更适合把它当成观察名单而不是立即执行对象。',
+            '第六，等下一次关键信号出来再判断会更稳。',
+          ].join('\n'),
+          createdAt: '2026-04-15T08:34:00.000Z',
+        }),
+      ],
+    }
+
+    const wrapper = await mountConversationPage(detail)
+    const shells = wrapper.findAll('.conversation-bubble__markdown-shell')
+    const toggles = wrapper.findAll('.conversation-bubble__toggle')
+
+    expect(shells).toHaveLength(2)
+    expect(toggles).toHaveLength(2)
+    expect(shells[0]?.classes()).toContain('is-collapsed')
+    expect(shells[1]?.classes()).not.toContain('is-collapsed')
+  })
 })

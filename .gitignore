@@ -151,6 +151,9 @@ activemq-data/
 !.env.example
 .envrc
 .venv
+.tmp/
+.pip-build-tracker/
+.pip-cache/
 env/
 venv/
 ENV/
@@ -224,6 +227,7 @@ results/
 reports/
 validation/vendor-news-lab/outputs/
 validation/llm-response-lab/outputs/
+.vite/
 **/node_modules/
 
 # logs
