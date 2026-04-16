@@ -35,3 +35,9 @@ class ReportInsightResult(BaseModel):
     """报告材料中是否有足够依据支撑回答。"""
     source_sections: list[str] = Field(default_factory=list)
     """本次回答引用了哪些章节（调试/审计用）。"""
+    routing_intent: str | None = None
+    routing_primary_section: str | None = None
+    routing_fallback_sections: list[str] = Field(default_factory=list)
+    routing_reason: str | None = None
+    llm_router_ms: float | None = None
+    llm_reply_ms: float | None = None

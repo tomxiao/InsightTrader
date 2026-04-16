@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from ta_service.api.deps import get_conversation_service, get_current_user, get_resolution_service
 from ta_service.models.auth import MobileUser
@@ -78,8 +81,43 @@ def post_conversation_message(
 ) -> PostConversationMessageResponse:
     return conversation_service.post_message(
         user_id=current_user.id,
+        username=current_user.username,
         conversation_id=conversation_id,
         message=payload.message,
+    )
+
+
+@router.post("/{conversation_id}/messages/stream")
+def stream_conversation_message(
+    conversation_id: str,
+    payload: PostConversationMessageRequest,
+    current_user: MobileUser = Depends(get_current_user),
+    conversation_service: ConversationService = Depends(get_conversation_service),
+) -> StreamingResponse:
+    def event_stream():
+        try:
+            for item in conversation_service.stream_post_message(
+                user_id=current_user.id,
+                username=current_user.username,
+                conversation_id=conversation_id,
+                message=payload.message,
+            ):
+                event = str(item.get("event") or "message")
+                data = {key: value for key, value in item.items() if key != "event"}
+                yield _format_sse(event=event, data=data)
+        except HTTPException as exc:
+            yield _format_sse("error", {"message": exc.detail, "status_code": exc.status_code})
+        except Exception as exc:
+            yield _format_sse("error", {"message": str(exc)})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
     )
 
 
@@ -109,3 +147,7 @@ def confirm_conversation_resolution(
         conversation_id=conversation_id,
         payload=payload,
     )
+
+
+def _format_sse(event: str, data: dict) -> str:
+    return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"

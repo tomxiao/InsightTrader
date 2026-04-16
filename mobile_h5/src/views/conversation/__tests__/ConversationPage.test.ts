@@ -22,6 +22,7 @@ const mockCreateConversation = vi.fn()
 const mockDeleteConversation = vi.fn()
 const mockResolve = vi.fn()
 const mockPostMessage = vi.fn()
+const mockStreamPostMessage = vi.fn()
 const mockConfirmResolution = vi.fn()
 const mockLogout = vi.fn()
 
@@ -40,6 +41,7 @@ vi.mock('@api/conversations', () => ({
     deleteConversation: (...args: unknown[]) => mockDeleteConversation(...args),
     resolve: (...args: unknown[]) => mockResolve(...args),
     postMessage: (...args: unknown[]) => mockPostMessage(...args),
+    streamPostMessage: (...args: unknown[]) => mockStreamPostMessage(...args),
     confirmResolution: (...args: unknown[]) => mockConfirmResolution(...args),
   },
 }))
@@ -51,7 +53,10 @@ vi.mock('@api/auth', () => ({
 }))
 
 vi.mock('@composables/useConversationPolling', () => ({
-  useConversationPolling: vi.fn(),
+  useConversationPolling: vi.fn(() => ({
+    startPolling: vi.fn(),
+    stopPolling: vi.fn(),
+  })),
 }))
 
 vi.mock('@composables/useDrawerPolling', () => ({
@@ -135,6 +140,7 @@ const mountConversationPage = async (detail: ConversationDetail) => {
   mockDeleteConversation.mockResolvedValue(undefined)
   mockResolve.mockResolvedValue({ messages: [], conversationStatus: detail.status })
   mockPostMessage.mockResolvedValue({ messages: [] })
+  mockStreamPostMessage.mockResolvedValue(undefined)
   mockConfirmResolution.mockResolvedValue({ messages: [], conversationStatus: detail.status })
   mockLogout.mockResolvedValue(undefined)
 
@@ -165,6 +171,7 @@ describe('ConversationPage acceptance', () => {
     mockDeleteConversation.mockReset()
     mockResolve.mockReset()
     mockPostMessage.mockReset()
+    mockStreamPostMessage.mockReset()
     mockConfirmResolution.mockReset()
     mockLogout.mockReset()
 

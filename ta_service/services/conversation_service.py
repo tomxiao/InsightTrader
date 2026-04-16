@@ -1,6 +1,11 @@
 from __future__ import annotations
 
+import json
 import logging
+import re
+from datetime import datetime
+from pathlib import Path
+from typing import Iterator
 
 from fastapi import HTTPException, status
 
@@ -12,6 +17,7 @@ from ta_service.contracts.conversations import (
 )
 from ta_service.models.conversation import (
     ConversationDetail,
+    ConversationMessage,
     ConversationSummary,
     PostConversationMessageResponse,
 )
@@ -98,6 +104,7 @@ class ConversationService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         message: str,
     ) -> PostConversationMessageResponse:
@@ -150,9 +157,119 @@ class ConversationService:
             user_id=user_id,
             to_status="report_explaining",
         )
+        self._write_insight_reply_audit_log(
+            username=username,
+            conversation=conversation,
+            context=insight_context,
+            question=message.strip(),
+            answer=result.answer,
+            source_sections=result.source_sections,
+            routing_intent=result.routing_intent,
+            routing_primary_section=result.routing_primary_section,
+            routing_fallback_sections=result.routing_fallback_sections,
+            routing_reason=result.routing_reason,
+            is_answerable=result.is_answerable,
+            llm_router_ms=result.llm_router_ms,
+            llm_reply_ms=result.llm_reply_ms,
+        )
         return PostConversationMessageResponse(
             messages=[build_message(user_message), build_message(assistant_message)],
         )
+
+    def stream_post_message(
+        self,
+        *,
+        user_id: str,
+        username: str,
+        conversation_id: str,
+        message: str,
+    ) -> Iterator[dict[str, object]]:
+        conversation = self.conversation_repo.get_for_user(
+            conversation_id=conversation_id,
+            user_id=user_id,
+        )
+        if not conversation:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Conversation not found",
+            )
+
+        conv_status = conversation.get("status")
+        if conv_status == "analyzing":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Analysis is still running for this conversation",
+            )
+        if conv_status not in ("report_ready", "report_explaining"):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"post_message not allowed in conversation status: {conv_status}",
+            )
+
+        all_messages = self.message_repo.list_for_conversation(conversation_id)
+        user_message = self.message_repo.create(
+            conversation_id=conversation_id,
+            role="user",
+            message_type=MessageType.TEXT,
+            content=message.strip(),
+        )
+        insight_context = self._build_insight_context(
+            conversation=conversation,
+            all_messages=all_messages,
+            question=message.strip(),
+        )
+
+        yield {
+            "event": "started",
+            "userMessage": build_message(user_message).model_dump(),
+        }
+
+        stream = self.report_insight_agent.answer_events(context=insight_context)
+        result = None
+        while True:
+            try:
+                payload = next(stream)
+                yield payload
+            except StopIteration as stop:
+                result = stop.value
+                break
+
+        if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Insight reply stream did not return a result",
+            )
+
+        assistant_message = self.message_repo.create(
+            conversation_id=conversation_id,
+            role="assistant",
+            message_type=MessageType.INSIGHT_REPLY,
+            content=result.answer,
+        )
+        self.state_machine.transition(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            to_status="report_explaining",
+        )
+        self._write_insight_reply_audit_log(
+            username=username,
+            conversation=conversation,
+            context=insight_context,
+            question=message.strip(),
+            answer=result.answer,
+            source_sections=result.source_sections,
+            routing_intent=result.routing_intent,
+            routing_primary_section=result.routing_primary_section,
+            routing_fallback_sections=result.routing_fallback_sections,
+            routing_reason=result.routing_reason,
+            is_answerable=result.is_answerable,
+            llm_router_ms=result.llm_router_ms,
+            llm_reply_ms=result.llm_reply_ms,
+        )
+        yield {
+            "event": "completed",
+            "assistantMessage": build_message(assistant_message).model_dump(),
+        }
 
     def _build_insight_context(
         self,
@@ -220,13 +337,82 @@ class ConversationService:
         return None
 
     def _build_conversation_history(self, *, all_messages: list[dict]) -> list[dict]:
-        """提取最近 N 轮 user/assistant 对话消息作为多轮历史。"""
-        max_turns = self.settings.followup_history_turns
+        """提取最近两轮 user/assistant 对话消息，避免多轮时不断重复扩写。"""
+        max_messages = min(self.settings.followup_history_turns, 4)
         text_messages = [
             msg
             for msg in all_messages
             if msg.get("role") in ("user", "assistant")
             and msg.get("messageType") in (MessageType.TEXT, MessageType.INSIGHT_REPLY)
         ]
-        recent = text_messages[-max_turns:] if len(text_messages) > max_turns else text_messages
+        recent = (
+            text_messages[-max_messages:] if len(text_messages) > max_messages else text_messages
+        )
         return [{"role": msg["role"], "content": msg.get("content", "")} for msg in recent]
+
+    def _write_insight_reply_audit_log(
+        self,
+        *,
+        username: str,
+        conversation: dict,
+        context: ReportInsightContext,
+        question: str,
+        answer: str,
+        source_sections: list[str],
+        routing_intent: str | None,
+        routing_primary_section: str | None,
+        routing_fallback_sections: list[str],
+        routing_reason: str | None,
+        is_answerable: bool,
+        llm_router_ms: float | None,
+        llm_reply_ms: float | None,
+    ) -> None:
+        try:
+            user_log_dir = self.settings.logs_root / _sanitize_username(username)
+            user_log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = user_log_dir / "insight_reply.jsonl"
+            report_dir = _resolve_report_dir_from_trace_dir(
+                trace_dir=context.trace_dir,
+                reports_root=self.settings.reports_root,
+            )
+            payload = {
+                "timestamp": datetime.now().isoformat(timespec="seconds"),
+                "username": username,
+                "conversation_title": conversation.get("title") or "",
+                "conversation_id": context.conversation_id,
+                "ticker": context.ticker,
+                "trade_date": context.trade_date,
+                "report_dir": str(report_dir) if report_dir else None,
+                "trace_dir": context.trace_dir,
+                "user_input": question,
+                "gating": {
+                    "intent": routing_intent,
+                    "primary_section": routing_primary_section,
+                    "fallback_sections": routing_fallback_sections,
+                    "reason": routing_reason,
+                },
+                "source_sections": source_sections,
+                "is_answerable": is_answerable,
+                "llm_router_ms": llm_router_ms,
+                "llm_reply_ms": llm_reply_ms,
+                "reply": answer,
+            }
+            with log_path.open("a", encoding="utf-8") as handle:
+                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        except Exception as exc:
+            logger.warning(
+                "post_message: failed to write insight reply audit log conversation_id=%s error=%s",
+                context.conversation_id,
+                exc,
+            )
+
+
+def _sanitize_username(username: str) -> str:
+    value = (username or "").strip() or "unknown_user"
+    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
+
+
+def _resolve_report_dir_from_trace_dir(*, trace_dir: str | None, reports_root: Path) -> Path | None:
+    if not trace_dir:
+        return None
+    return reports_root / Path(trace_dir).name

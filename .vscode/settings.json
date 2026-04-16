@@ -1,26 +1,15 @@
 {
   "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
-  "python.languageServer": "None",
+  "python.languageServer": "Pylance",
   "python.analysis.typeCheckingMode": "basic",
   "python.analysis.autoImportCompletions": true,
   "python.analysis.extraPaths": ["${workspaceFolder}"],
-  "python.analysis.include": ["."],
   "python.analysis.exclude": [
     ".venv",
     "reports",
-    "docs"
-  ],
-  "cursorpyright.analysis.autoImportCompletions": true,
-  "cursorpyright.analysis.exclude": [
-    ".venv",
-    "reports",
-    "docs"
-  ],
-  "cursorpyright.analysis.extraPaths": [
-    "${workspaceFolder}"
-  ],
-  "cursorpyright.analysis.include": [
-    "."
-  ],
-  "cursorpyright.analysis.typeCheckingMode": "basic"
+    "docs",
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.*"
+  ]
 }

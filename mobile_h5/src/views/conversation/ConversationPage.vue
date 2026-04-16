@@ -8,6 +8,7 @@ import { showToast } from 'vant'
 
 import { authApi } from '@api/auth'
 import { conversationsApi } from '@api/conversations'
+import type { StreamMessageEvent } from '@api/conversations'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
 import { useConversationPolling } from '@composables/useConversationPolling'
 import { useDrawerPolling } from '@composables/useDrawerPolling'
@@ -34,6 +35,7 @@ const accountMenuOpen = ref(false)
 const logoutLoading = ref(false)
 const resolutionActionLoading = ref(false)
 const sendingLoading = ref(false)
+const isStreamingReply = ref(false)
 
 const promptModel = ref('')
 const conversationBodyRef = ref<HTMLElement | null>(null)
@@ -96,15 +98,10 @@ const isNearConversationBottom = (threshold = 96) => {
 }
 
 const scrollConversationToBottom = (behavior: ScrollBehavior = 'auto') => {
-  const marker = conversationEndRef.value
-  if (marker) {
-    marker.scrollIntoView({ block: 'end', behavior })
-    return
-  }
-
   const element = conversationBodyRef.value
   if (element) {
-    element.scrollTo({ top: element.scrollHeight, behavior })
+    const maxScrollTop = Math.max(0, element.scrollHeight - element.clientHeight)
+    element.scrollTo({ top: maxScrollTop, behavior })
   }
 }
 
@@ -129,9 +126,6 @@ const handleComposerFocusIn = () => {
   composerFocused.value = true
   window.clearTimeout(composerBlurTimer)
   updateKeyboardOffset()
-  window.requestAnimationFrame(() => {
-    scrollConversationToBottom('smooth')
-  })
 }
 
 const handleComposerFocusOut = () => {
@@ -218,79 +212,6 @@ const canSubmitPrompt = computed(() =>
   Boolean(promptModel.value.trim()) && !sendingLoading.value && !isAnalyzing.value
 )
 
-const INSIGHT_REPLY_COLLAPSE_MIN_LENGTH = 220
-const INSIGHT_REPLY_COLLAPSE_MIN_LINES = 6
-
-const collapsedInsightReplyIds = ref(new Set<string>())
-
-const getInsightReplyMessages = () =>
-  currentMessages.value.filter(message => message.messageType === MessageType.INSIGHT_REPLY)
-
-const shouldEnableInsightReplyCollapse = (message: ConversationMessage): boolean => {
-  if (message.messageType !== MessageType.INSIGHT_REPLY) return false
-
-  const text = getMessageText(message).trim()
-  if (!text) return false
-
-  const lineCount = text
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean).length
-
-  return text.length > INSIGHT_REPLY_COLLAPSE_MIN_LENGTH || lineCount > INSIGHT_REPLY_COLLAPSE_MIN_LINES
-}
-
-const getLatestInsightReplyId = (): string => {
-  const insightReplies = getInsightReplyMessages()
-  if (!insightReplies.length) return ''
-  return insightReplies[insightReplies.length - 1].id
-}
-
-const initializeInsightReplyCollapseState = () => {
-  const insightReplies = getInsightReplyMessages().filter(shouldEnableInsightReplyCollapse)
-  if (insightReplies.length <= 1) {
-    collapsedInsightReplyIds.value = new Set()
-    return
-  }
-
-  collapsedInsightReplyIds.value = new Set(
-    insightReplies.slice(0, -1).map(message => message.id)
-  )
-}
-
-const isInsightReplyCollapsed = (messageId: string): boolean => {
-  const message = currentMessages.value.find(item => item.id === messageId)
-  if (!message || !shouldEnableInsightReplyCollapse(message)) return false
-  return collapsedInsightReplyIds.value.has(messageId)
-}
-
-const setInsightReplyCollapsed = (messageId: string, collapsed: boolean) => {
-  const message = currentMessages.value.find(item => item.id === messageId)
-  const next = new Set(collapsedInsightReplyIds.value)
-  if (!message || !shouldEnableInsightReplyCollapse(message)) {
-    next.delete(messageId)
-  } else if (collapsed) {
-    next.add(messageId)
-  } else {
-    next.delete(messageId)
-  }
-  collapsedInsightReplyIds.value = next
-}
-
-const toggleInsightReply = (messageId: string) => {
-  setInsightReplyCollapsed(messageId, !isInsightReplyCollapsed(messageId))
-}
-
-const collapseLatestInsightReply = () => {
-  const latestInsightReplyId = getLatestInsightReplyId()
-  if (!latestInsightReplyId) return
-  setInsightReplyCollapsed(latestInsightReplyId, true)
-}
-
-const expandInsightReply = (messageId: string) => {
-  setInsightReplyCollapsed(messageId, false)
-}
-
 
 const currentConversationStatusLabel = computed(
   () => conversationHeaderSubtitleMap[currentConversation.value.status] || '输入标的后开始分析'
@@ -303,6 +224,11 @@ const isAdmin = computed(() => authStore.isAdmin)
 const loadConversation = async (conversationId: string) => {
   const detail = await conversationsApi.getConversation(conversationId)
   conversationStore.setCurrentConversation(detail)
+}
+
+const refreshCurrentConversation = async () => {
+  if (!currentConversation.value.id) return
+  await loadConversation(currentConversation.value.id)
 }
 
 const createConversation = async () => {
@@ -410,6 +336,74 @@ const applyResolutionResponse = async (response: ResolutionResponse) => {
   }
 }
 
+const handleStreamEvent = ({
+  event,
+  optimisticId,
+  thinkingId,
+  streamingAssistantId,
+}: {
+  event: StreamMessageEvent
+  optimisticId: string
+  thinkingId: string
+  streamingAssistantId: string
+}) => {
+  if (event.event === 'started') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(optimisticId)
+    conversationStore.upsertMessage(event.userMessage)
+    conversationStore.upsertMessage({
+      id: thinkingId,
+      role: 'system',
+      messageType: MessageType.TEXT,
+      content: '正在准备回复…',
+      createdAt: new Date().toISOString(),
+    })
+    conversationStore.updateConversationStatus('report_explaining')
+    return
+  }
+
+  if (event.event === 'routing') {
+    conversationStore.upsertMessage({
+      id: thinkingId,
+      role: 'system',
+      messageType: MessageType.TEXT,
+      content: '正在组织回复…',
+      createdAt: new Date().toISOString(),
+    })
+    return
+  }
+
+  if (event.event === 'delta') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(optimisticId)
+    const existing = currentMessages.value.find(item => item.id === streamingAssistantId)
+    const currentText = existing ? getMessageText(existing) : ''
+    conversationStore.upsertMessage({
+      id: streamingAssistantId,
+      role: 'assistant',
+      messageType: MessageType.INSIGHT_REPLY,
+      content: `${currentText}${event.text}`,
+      createdAt: new Date().toISOString(),
+    })
+    return
+  }
+
+  if (event.event === 'completed') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(optimisticId)
+    conversationStore.removeMessageById(streamingAssistantId)
+    conversationStore.upsertMessage(event.assistantMessage)
+    conversationStore.updateConversationStatus('report_explaining')
+    return
+  }
+
+  if (event.event === 'error') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(streamingAssistantId)
+    throw new Error(event.message || '流式回复失败，请稍后再试')
+  }
+}
+
 const submitResolutionAction = async (action: ResolutionAction, resolutionId: string, ticker?: string) => {
   if (!currentConversation.value.id || !resolutionId) return
   resolutionActionLoading.value = true
@@ -453,14 +447,11 @@ const submitPrompt = async () => {
     return
   }
 
-  if (isFollowupMode.value) {
-    collapseLatestInsightReply()
-  }
-
   promptModel.value = ''
 
   const optimisticId = `optimistic-user-${Date.now()}`
   const thinkingId = `optimistic-thinking-${Date.now()}`
+  const streamingAssistantId = `optimistic-assistant-${Date.now()}`
   skipAutoStickMessageId.value = thinkingId
 
   conversationStore.appendMessages([
@@ -486,11 +477,24 @@ const submitPrompt = async () => {
 
   try {
     if (isFollowupMode.value) {
-      const response = await conversationsApi.postMessage(currentConversation.value.id, { message: text })
-      conversationStore.removeMessageById(optimisticId)
-      conversationStore.removeMessageById(thinkingId)
-      conversationStore.appendMessages(response.messages)
-      conversationStore.updateConversationStatus('report_explaining')
+      stopPolling()
+      isStreamingReply.value = true
+      let streamingStarted = false
+      await conversationsApi.streamPostMessage(currentConversation.value.id, { message: text }, {
+        onEvent: (event: StreamMessageEvent) => {
+          handleStreamEvent({
+            event,
+            optimisticId,
+            thinkingId,
+            streamingAssistantId,
+          })
+          streamingStarted = true
+        }
+      })
+      if (!streamingStarted) {
+        throw new Error('未收到流式回复事件')
+      }
+      await refreshCurrentConversation()
       return
     }
 
@@ -501,12 +505,14 @@ const submitPrompt = async () => {
   } catch (error) {
     conversationStore.removeMessageById(optimisticId)
     conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(streamingAssistantId)
     if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
       showToast('识别耗时较长，请稍后查看结果或重新发送')
     } else {
       showToast((error as Error).message || '发送失败，请稍后再试')
     }
   } finally {
+    isStreamingReply.value = false
     sendingLoading.value = false
   }
 }
@@ -581,7 +587,7 @@ const openUserManagement = () => {
   void router.push({ name: 'AdminUsers' })
 }
 
-useConversationPolling(() => currentConversation.value.id)
+const { stopPolling } = useConversationPolling(() => currentConversation.value.id)
 
 useDrawerPolling()
 
@@ -801,16 +807,8 @@ watch(
   [() => currentConversation.value.id, () => currentMessages.value[currentMessages.value.length - 1]?.id],
   async ([nextConversationId, nextLatestMessageId], [prevConversationId]) => {
     const switchedConversation = nextConversationId !== prevConversationId
-    const shouldStickToBottom = switchedConversation || isNearConversationBottom(220)
-
-    if (switchedConversation) {
-      initializeInsightReplyCollapseState()
-    }
-
-    const latestMessage = currentMessages.value[currentMessages.value.length - 1]
-    if (latestMessage?.messageType === MessageType.INSIGHT_REPLY) {
-      expandInsightReply(latestMessage.id)
-    }
+    const shouldStickToBottom =
+      switchedConversation || (!isStreamingReply.value && isNearConversationBottom(220))
 
     await nextTick()
 
@@ -836,7 +834,6 @@ onMounted(async () => {
   }
 
   await bootstrap()
-  initializeInsightReplyCollapseState()
   await nextTick()
   updateKeyboardOffset()
   syncConversationChromeState()
@@ -1186,26 +1183,12 @@ onUnmounted(() => {
                   <span>{{ getSpeakerLabel(message) }}</span>
                   <span>{{ formatTimeLabel(message.createdAt) }}</span>
                 </div>
-                <div
-                  class="conversation-bubble__markdown-shell"
-                  :class="{
-                    'is-collapsed':
-                      shouldEnableInsightReplyCollapse(message) && isInsightReplyCollapsed(message.id),
-                  }"
-                >
+                <div class="conversation-bubble__markdown-shell">
                   <div
                     class="conversation-summary conversation-summary--markdown conversation-bubble__markdown"
                     v-html="renderMarkdown(getMessageText(message))"
                   />
                 </div>
-                <button
-                  v-if="shouldEnableInsightReplyCollapse(message)"
-                  class="conversation-bubble__toggle"
-                  :class="{ 'is-collapsed': isInsightReplyCollapsed(message.id) }"
-                  type="button"
-                  :aria-label="isInsightReplyCollapsed(message.id) ? '展开全文' : '收起全文'"
-                  @click="toggleInsightReply(message.id)"
-                ><span class="conversation-bubble__toggle-icon" aria-hidden="true" /></button>
               </div>
             </template>
 
@@ -2086,80 +2069,6 @@ onUnmounted(() => {
 
 .conversation-bubble__markdown-shell {
   position: relative;
-}
-
-.conversation-bubble__markdown-shell.is-collapsed {
-  max-height: 13.5em;
-  overflow: hidden;
-}
-
-.conversation-bubble__markdown-shell.is-collapsed::after {
-  content: '';
-  position: absolute;
-  inset: auto 0 0;
-  height: 52px;
-  background: linear-gradient(180deg, rgba(18, 20, 26, 0), rgba(18, 20, 26, 0.96) 78%);
-  pointer-events: none;
-}
-
-.conversation-bubble__toggle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  margin: -10px auto 0;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(32, 34, 40, 0.68);
-  color: var(--mobile-color-text-secondary);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.conversation-bubble__toggle.is-collapsed {
-  position: relative;
-  z-index: 1;
-  margin: -28px auto 6px;
-}
-
-.conversation-bubble__toggle-icon {
-  position: relative;
-  width: 12px;
-  height: 12px;
-  display: block;
-}
-
-.conversation-bubble__toggle-icon::before,
-.conversation-bubble__toggle-icon::after {
-  content: '';
-  position: absolute;
-  left: 50%;
-  width: 7px;
-  height: 7px;
-  border-right: 1.5px solid currentColor;
-  border-bottom: 1.5px solid currentColor;
-}
-
-.conversation-bubble__toggle.is-collapsed .conversation-bubble__toggle-icon::before {
-  top: -1px;
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.conversation-bubble__toggle.is-collapsed .conversation-bubble__toggle-icon::after {
-  top: 4px;
-  transform: translateX(-50%) rotate(45deg);
-}
-
-.conversation-bubble__toggle:not(.is-collapsed) .conversation-bubble__toggle-icon::before {
-  top: 1px;
-  transform: translateX(-50%) rotate(-135deg);
-}
-
-.conversation-bubble__toggle:not(.is-collapsed) .conversation-bubble__toggle-icon::after {
-  top: 6px;
-  transform: translateX(-50%) rotate(-135deg);
 }
 
 .conversation-inline-card__meta {
