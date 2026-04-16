@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from typing import cast
 
 from ta_service.repos.conversations import ConversationRepository
 
@@ -136,14 +137,22 @@ class ConversationStateMachine:
             user_id=user_id,
             status=to_status,
             title=title,
-            task_id=None if task_id is _SENTINEL else task_id,
+            task_id=None if task_id is _SENTINEL else cast(str | None, task_id),
             set_task_id=(task_id is not _SENTINEL),
-            pending_resolution=None if pending_resolution is _SENTINEL else pending_resolution,
+            pending_resolution=(
+                None
+                if pending_resolution is _SENTINEL
+                else cast(dict | None, pending_resolution)
+            ),
             set_pending_resolution=(pending_resolution is not _SENTINEL),
-            confirmed_stock=None if confirmed_stock is _SENTINEL else confirmed_stock,
+            confirmed_stock=(
+                None if confirmed_stock is _SENTINEL else cast(dict | None, confirmed_stock)
+            ),
             set_confirmed_stock=(confirmed_stock is not _SENTINEL),
-            confirmed_analysis_prompt=None
-            if confirmed_analysis_prompt is _SENTINEL
-            else confirmed_analysis_prompt,
+            confirmed_analysis_prompt=(
+                None
+                if confirmed_analysis_prompt is _SENTINEL
+                else cast(str | None, confirmed_analysis_prompt)
+            ),
             set_confirmed_analysis_prompt=(confirmed_analysis_prompt is not _SENTINEL),
         )

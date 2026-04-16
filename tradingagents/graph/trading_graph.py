@@ -39,9 +39,9 @@ class TradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "social", "news", "fundamentals"],
-        debug=False,
-        config: Dict[str, Any] = None,
+        selected_analysts: Optional[List[str]] = None,
+        debug: bool = False,
+        config: Optional[Dict[str, Any]] = None,
         callbacks: Optional[List] = None,
     ):
         """Initialize the trading agents graph and components.
@@ -131,11 +131,13 @@ class TradingAgentsGraph:
 
         # State tracking
         self.curr_state = None
-        self.ticker = None
+        self.ticker: Optional[str] = None
         self.log_states_dict = {}  # date to full state dict
 
         # Set up the graph
-        self.graph = self.graph_setup.setup_graph(selected_analysts)
+        self.graph = self.graph_setup.setup_graph(
+            selected_analysts or ["market", "social", "news", "fundamentals"]
+        )
 
     def _get_provider_kwargs(self) -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
@@ -282,10 +284,11 @@ class TradingAgentsGraph:
         if trace_dir:
             directory = Path(trace_dir) / "TradingAgentsStrategy_logs"
         else:
+            ticker = self.ticker or "unknown"
             directory = (
                 resolve_results_run_dir(
                     self.config["results_dir"],
-                    self.ticker,
+                    ticker,
                     datetime.now(),
                 )
                 / "TradingAgentsStrategy_logs"

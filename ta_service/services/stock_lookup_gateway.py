@@ -300,7 +300,12 @@ def _normalize_ticker_hint(value: str) -> str:
 
 def _resolve_markets(*, query: str, market_hints: list[str] | None) -> list[str]:
     if market_hints:
-        markets = [_to_internal_market(item) for item in market_hints if _to_internal_market(item)]
+        markets = [
+            market
+            for item in market_hints
+            for market in [_to_internal_market(item)]
+            if market is not None
+        ]
         if markets:
             return list(dict.fromkeys(markets))
 
@@ -445,4 +450,7 @@ def _select_supported_columns(dataframe: pd.DataFrame, fields: str) -> pd.DataFr
     supported = [column for column in columns if column in dataframe.columns]
     if not supported:
         return dataframe
-    return dataframe[supported].copy()
+    selected = dataframe[supported]
+    if isinstance(selected, pd.Series):
+        return selected.to_frame()
+    return selected.copy()

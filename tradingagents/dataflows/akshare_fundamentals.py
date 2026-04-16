@@ -19,7 +19,7 @@ def _a_share_prefixed_symbol(ticker: str) -> str:
     return f"{infer_a_share_exchange(code)}{code}"
 
 
-def get_fundamentals(ticker: str, curr_date: str = None) -> str:
+def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
     ak = get_akshare_module()
     market = detect_market(ticker)
     symbol = normalize_symbol_for_vendor(ticker, "akshare", market)
@@ -50,15 +50,15 @@ def get_fundamentals(ticker: str, curr_date: str = None) -> str:
         return f"Error retrieving fundamentals for {ticker} via akshare: {exc}"
 
 
-def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     return _statement_report(ticker, "balance_sheet", freq)
 
 
-def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     return _statement_report(ticker, "cashflow", freq)
 
 
-def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     return _statement_report(ticker, "income_statement", freq)
 
 

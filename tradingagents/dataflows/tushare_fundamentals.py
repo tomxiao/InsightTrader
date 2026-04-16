@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import pandas as pd
+from typing import cast
 
 from .formatting import format_dataframe_report, format_text_report, unsupported_response
 from .market_resolver import (
@@ -12,7 +13,7 @@ from .market_resolver import (
 from .tushare_common import get_tushare_pro
 
 
-def get_fundamentals(ticker: str, curr_date: str = None) -> str:
+def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
     try:
         market = detect_market(ticker)
         symbol = normalize_symbol_for_vendor(ticker, "tushare", market)
@@ -52,15 +53,18 @@ def _fetch_statement(
     symbol = normalize_symbol_for_vendor(ticker, "tushare", market)
     pro = get_tushare_pro()
     dataframe = getattr(pro, method_name)(ts_code=symbol)
+    if not isinstance(dataframe, pd.DataFrame):
+        dataframe = pd.DataFrame(dataframe)
+    dataframe = cast(pd.DataFrame, dataframe)
     if curr_date and dataframe is not None and not dataframe.empty:
         for column in ["end_date", "f_ann_date", "ann_date"]:
             if column in dataframe.columns:
                 dataframe = dataframe[dataframe[column] <= curr_date.replace("-", "")]
                 break
-    return dataframe, market, symbol
+    return cast(tuple[pd.DataFrame, str, str], (dataframe, market, symbol))
 
 
-def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     try:
         dataframe, market, symbol = _fetch_statement(ticker, "balancesheet", curr_date)
         return format_dataframe_report(
@@ -72,7 +76,7 @@ def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = Non
         return f"Error retrieving balance sheet for {ticker} via tushare: {exc}"
 
 
-def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     try:
         dataframe, market, symbol = _fetch_statement(ticker, "cashflow", curr_date)
         return format_dataframe_report(
@@ -84,7 +88,7 @@ def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None):
         return f"Error retrieving cash flow for {ticker} via tushare: {exc}"
 
 
-def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     try:
         dataframe, market, symbol = _fetch_statement(ticker, "income", curr_date)
         return format_dataframe_report(

@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import logging
 import re
-from typing import Any, Callable
+from typing import Any
 
 from langchain_core.messages import ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.tools import BaseTool
 from langchain_core.tools import tool
 
 from ta_service.models.resolution import AgentResolutionResult, ResolutionAgentContext
@@ -148,9 +149,7 @@ class ResolutionAgent:
 
     def _run_llm_agent(self, *, context: ResolutionAgentContext, llm: Any) -> AgentResolutionResult:
         tools = self._build_tools()
-        tools_by_name: dict[str, Callable[..., dict[str, Any]]] = {
-            tool_item.name: tool_item for tool_item in tools
-        }
+        tools_by_name: dict[str, BaseTool] = {tool_item.name: tool_item for tool_item in tools}
 
         prompt = ChatPromptTemplate.from_messages(
             [
@@ -267,7 +266,7 @@ def _build_agent_input(context: ResolutionAgentContext) -> str:
 
 def _invoke_tool_call(
     *,
-    tools_by_name: dict[str, Callable[..., dict[str, Any]]],
+    tools_by_name: dict[str, BaseTool],
     tool_name: str,
     args: dict[str, Any],
 ) -> dict[str, Any]:
@@ -276,11 +275,13 @@ def _invoke_tool_call(
         return {"error": f"Unknown tool: {tool_name}"}
     logger.info("resolution_agent_tool_call tool=%s args=%s", tool_name, args)
     result = tool_func.invoke(args)
+    if not isinstance(result, dict):
+        return {"error": f"Tool {tool_name} returned unsupported payload type"}
     logger.info(
         "resolution_agent_tool_result tool=%s has_error=%s candidate_count=%s",
         tool_name,
         "error" in result,
-        len(result.get("candidates", [])) if isinstance(result, dict) else 0,
+        len(result.get("candidates", [])),
     )
     return result
 

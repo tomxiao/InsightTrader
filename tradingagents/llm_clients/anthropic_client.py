@@ -96,7 +96,7 @@ class AnthropicClient(BaseLLMClient):
     def get_llm(self) -> Any:
         """Return configured ChatAnthropic instance."""
         self.warn_if_unknown_model()
-        llm_kwargs = {"model": self.model}
+        llm_kwargs: dict[str, Any] = {"model": self.model}
 
         if self.base_url:
             llm_kwargs["base_url"] = self.base_url
@@ -115,7 +115,7 @@ class AnthropicClient(BaseLLMClient):
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
 
-        llm = NormalizedChatAnthropic(**llm_kwargs)
+        llm: Any = NormalizedChatAnthropic(**llm_kwargs)
         llm._tradingagents_provider = self.provider
         llm._tradingagents_model = self.model
         return llm

@@ -92,7 +92,7 @@ class OpenAIClient(BaseLLMClient):
     def get_llm(self) -> Any:
         """Return configured ChatOpenAI instance."""
         self.warn_if_unknown_model()
-        llm_kwargs = {"model": self.model}
+        llm_kwargs: dict[str, Any] = {"model": self.model}
 
         # Provider-specific base URL and auth
         if self.provider in _PROVIDER_CONFIG:
@@ -117,7 +117,7 @@ class OpenAIClient(BaseLLMClient):
         if self.provider == "openai":
             llm_kwargs["use_responses_api"] = True
 
-        llm = NormalizedChatOpenAI(**llm_kwargs)
+        llm: Any = NormalizedChatOpenAI(**llm_kwargs)
         llm._tradingagents_provider = self.provider
         llm._tradingagents_model = self.model
         return llm

@@ -7,7 +7,7 @@ from .formatting import format_dataframe_report, format_text_report
 from .market_resolver import detect_market, normalize_symbol_for_vendor
 
 
-def get_fundamentals(ticker: str, curr_date: str = None) -> str:
+def get_fundamentals(ticker: str, curr_date: str | None = None) -> str:
     try:
         market = detect_market(ticker)
         symbol = normalize_symbol_for_vendor(ticker, "finnhub", market)
@@ -53,13 +53,19 @@ def _financials_report_to_frame(
 
 
 def _section_report(
-    ticker: str, section_name: str, title: str, freq: str = "quarterly", curr_date: str = None
+    ticker: str,
+    section_name: str,
+    title: str,
+    freq: str = "quarterly",
+    curr_date: str | None = None,
 ) -> str:
     try:
         _report, dataframe, market, symbol = _financials_report_to_frame(ticker, curr_date)
         filtered = (
             dataframe[dataframe["section"] == section_name] if not dataframe.empty else dataframe
         )
+        if isinstance(filtered, pd.Series):
+            filtered = filtered.to_frame()
         return format_dataframe_report(
             title,
             filtered,
@@ -69,13 +75,13 @@ def _section_report(
         return f"Error retrieving {title.lower()} for {ticker} via finnhub: {exc}"
 
 
-def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_balance_sheet(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     return _section_report(ticker, "bs", f"Finnhub balance sheet for {ticker}", freq, curr_date)
 
 
-def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_cashflow(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     return _section_report(ticker, "cf", f"Finnhub cash flow for {ticker}", freq, curr_date)
 
 
-def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str = None):
+def get_income_statement(ticker: str, freq: str = "quarterly", curr_date: str | None = None):
     return _section_report(ticker, "ic", f"Finnhub income statement for {ticker}", freq, curr_date)

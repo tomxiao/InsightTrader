@@ -224,10 +224,11 @@ class TradingAgentsRunner:
             snapshot["risk.debate"] = (
                 "completed" if risk_done else ("in_progress" if trader_done else "pending")
             )
+            portfolio_done = bool(state.get("final_trade_decision"))
             snapshot["portfolio.decision"] = (
                 "completed"
-                if risk_done
-                else ("in_progress" if state.get("final_trade_decision") else "pending")
+                if portfolio_done
+                else ("in_progress" if risk_done else "pending")
             )
         else:
             snapshot["research.debate"] = "pending"

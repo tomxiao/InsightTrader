@@ -57,7 +57,7 @@ class GoogleClient(BaseLLMClient):
     def get_llm(self) -> Any:
         """Return configured ChatGoogleGenerativeAI instance."""
         self.warn_if_unknown_model()
-        llm_kwargs = {"model": self.model}
+        llm_kwargs: dict[str, Any] = {"model": self.model}
 
         if self.base_url:
             llm_kwargs["base_url"] = self.base_url
@@ -87,7 +87,7 @@ class GoogleClient(BaseLLMClient):
                 # Gemini 2.5: map to thinking_budget
                 llm_kwargs["thinking_budget"] = -1 if thinking_level == "high" else 0
 
-        llm = NormalizedChatGoogleGenerativeAI(**llm_kwargs)
+        llm: Any = NormalizedChatGoogleGenerativeAI(**llm_kwargs)
         llm._tradingagents_provider = "google"
         llm._tradingagents_model = self.model
         return llm

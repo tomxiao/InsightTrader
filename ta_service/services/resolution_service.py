@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
+from typing import Literal, cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -438,10 +439,13 @@ def _build_pending_resolution(
     if result.status in {"resolved", "failed", "unsupported"}:
         return None
 
+    pending_status = cast(
+        Literal["collect_more", "need_confirm", "need_disambiguation"], result.status
+    )
     candidates = result.candidates or ([result.stock] if result.stock else [])
     return PendingResolutionSnapshot(
         resolutionId=resolution_id,
-        status=result.status,
+        status=pending_status,
         round=round_number,
         originalMessage=original_message,
         analysisPrompt=analysis_prompt,

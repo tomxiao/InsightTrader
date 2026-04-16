@@ -110,19 +110,20 @@ class AnalysisService:
         conversation_id: str,
         ticker: str,
         trade_date: str,
-        prompt: str,
+        prompt: str | None,
         selected_analysts: list[str] | None = None,
     ) -> dict:
         """
         内部方法：已持锁、已校验状态后直接创建并启动分析任务。
         返回任务文档 dict，调用方可从中取进度字段。
         """
+        prompt_text = prompt or ""
         document = self.task_repo.create(
             user_id=user_id,
             conversation_id=conversation_id,
             ticker=ticker,
             trade_date=trade_date,
-            prompt=prompt,
+            prompt=prompt_text,
             selected_analysts=selected_analysts or [],
         )
 
@@ -133,7 +134,9 @@ class AnalysisService:
             content={"text": "已收到分析请求，正在准备任务", "stageId": None},
         )
         title = (
-            " ".join(prompt.strip().split())[:30] if prompt and prompt.strip() else f"{ticker} 分析"
+            " ".join(prompt_text.strip().split())[:30]
+            if prompt_text.strip()
+            else f"{ticker} 分析"
         )
 
         self.state_machine.transition(

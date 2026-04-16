@@ -89,4 +89,7 @@ def standardize_ohlcv_dataframe(
         for column in ["Date", "Open", "High", "Low", "Close", "Adj Close", "Volume", "Amount"]
         if column in renamed.columns
     ]
-    return renamed[base_columns].reset_index(drop=True)
+    selected = renamed[base_columns]
+    if isinstance(selected, pd.Series):
+        return selected.to_frame().reset_index(drop=True)
+    return selected.reset_index(drop=True)

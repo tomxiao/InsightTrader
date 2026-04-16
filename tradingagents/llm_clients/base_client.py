@@ -31,7 +31,7 @@ class BaseLLMClient(ABC):
     def __init__(self, model: str, base_url: Optional[str] = None, **kwargs):
         self.model = model
         self.base_url = base_url
-        self.kwargs = kwargs
+        self.kwargs: dict[str, Any] = kwargs
 
     def get_provider_name(self) -> str:
         """Return the provider name used in warning messages."""

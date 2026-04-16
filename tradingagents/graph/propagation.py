@@ -1,8 +1,9 @@
 # TradingAgents/graph/propagation.py
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 from tradingagents.agents.utils.agent_states import (
+    AgentState,
     InvestDebateState,
     RiskDebateState,
 )
@@ -15,41 +16,48 @@ class Propagator:
         """Initialize with configuration parameters."""
         self.max_recur_limit = max_recur_limit
 
-    def create_initial_state(self, company_name: str, trade_date: str) -> Dict[str, Any]:
+    def create_initial_state(self, company_name: str, trade_date: str) -> AgentState:
         """Create the initial state for the agent graph."""
-        return {
-            "messages": [("human", company_name)],
-            "company_of_interest": company_name,
-            "trade_date": str(trade_date),
-            "investment_debate_state": InvestDebateState(
-                {
-                    "bull_history": "",
-                    "bear_history": "",
-                    "history": "",
-                    "current_response": "",
-                    "judge_decision": "",
-                    "count": 0,
-                }
-            ),
-            "risk_debate_state": RiskDebateState(
-                {
-                    "aggressive_history": "",
-                    "conservative_history": "",
-                    "neutral_history": "",
-                    "history": "",
-                    "latest_speaker": "",
-                    "current_aggressive_response": "",
-                    "current_conservative_response": "",
-                    "current_neutral_response": "",
-                    "judge_decision": "",
-                    "count": 0,
-                }
-            ),
-            "market_report": "",
-            "fundamentals_report": "",
-            "sentiment_report": "",
-            "news_report": "",
-        }
+        return cast(
+            AgentState,
+            {
+                "messages": [("human", company_name)],
+                "company_of_interest": company_name,
+                "trade_date": str(trade_date),
+                "sender": "human",
+                "investment_debate_state": InvestDebateState(
+                    {
+                        "bull_history": "",
+                        "bear_history": "",
+                        "history": "",
+                        "current_response": "",
+                        "judge_decision": "",
+                        "count": 0,
+                    }
+                ),
+                "risk_debate_state": RiskDebateState(
+                    {
+                        "aggressive_history": "",
+                        "conservative_history": "",
+                        "neutral_history": "",
+                        "history": "",
+                        "latest_speaker": "",
+                        "current_aggressive_response": "",
+                        "current_conservative_response": "",
+                        "current_neutral_response": "",
+                        "judge_decision": "",
+                        "count": 0,
+                    }
+                ),
+                "market_report": "",
+                "fundamentals_report": "",
+                "sentiment_report": "",
+                "news_report": "",
+                "investment_plan": "",
+                "trader_investment_plan": "",
+                "final_trade_decision": "",
+            },
+        )
 
     def get_graph_args(self, callbacks: Optional[List] = None) -> Dict[str, Any]:
         """Get arguments for the graph invocation.
@@ -58,7 +66,7 @@ class Propagator:
             callbacks: Optional list of callback handlers for tool execution tracking.
                        Note: LLM callbacks are handled separately via LLM constructor.
         """
-        config = {"recursion_limit": self.max_recur_limit}
+        config: Dict[str, Any] = {"recursion_limit": self.max_recur_limit}
         if callbacks:
             config["callbacks"] = callbacks
         return {

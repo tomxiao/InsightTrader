@@ -265,7 +265,7 @@ def get_category_for_method(method: str) -> str:
     raise ValueError(f"Method '{method}' not found in any category")
 
 
-def get_vendor(category: str, method: str = None) -> str:
+def get_vendor(category: str, method: str | None = None) -> str:
     """Get the configured vendor for a data category or specific tool method.
     Tool-level configuration takes precedence over category-level.
     """

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import threading
-from typing import Any, Dict, List
+from typing import Any, Dict, List, cast
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import AIMessage
@@ -45,7 +45,7 @@ class StatsCallbackHandler(BaseCallbackHandler):
 
         usage_metadata = None
         if hasattr(generation, "message"):
-            message = generation.message
+            message = cast(Any, generation).message
             if isinstance(message, AIMessage) and hasattr(message, "usage_metadata"):
                 usage_metadata = message.usage_metadata
 

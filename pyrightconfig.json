@@ -1,0 +1,13 @@
+{
+  "exclude": [
+    "**/.git",
+    "**/.venv",
+    "**/__pycache__",
+    "build",
+    "dist",
+    "results",
+    "reports",
+    "validation",
+    "mobile_h5/node_modules"
+  ]
+}

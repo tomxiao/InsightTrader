@@ -66,10 +66,11 @@ class GraphSetup:
 
         stage_id = resolve_stage_id_for_node(node_name)
         node_kind = resolve_node_kind(node_name)
+        node_tracker = self.node_tracker
 
         def instrumented_node(*args, **kwargs):
             previous_context = get_runtime_context()
-            self.node_tracker.mark_started(
+            node_tracker.mark_started(
                 node_id=node_name,
                 stage_id=stage_id,
                 node_kind=node_kind,
@@ -82,10 +83,10 @@ class GraphSetup:
             try:
                 result = self._invoke_node(node, *args, **kwargs)
             except Exception as exc:
-                self.node_tracker.mark_failed(exc)
+                node_tracker.mark_failed(exc)
                 raise
             else:
-                self.node_tracker.mark_completed()
+                node_tracker.mark_completed()
                 return result
             finally:
                 set_runtime_context(

@@ -37,7 +37,7 @@ def get_config() -> Dict:
     """Get the current configuration."""
     if _config is None:
         initialize_config()
-    return copy.deepcopy(_config)
+    return copy.deepcopy(_config or {})
 
 
 def set_runtime_context(**kwargs):

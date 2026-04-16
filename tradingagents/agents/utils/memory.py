@@ -5,7 +5,7 @@ no token limits, works offline with any LLM provider.
 """
 
 import re
-from typing import List, Tuple
+from typing import Any, List, Tuple
 
 from rank_bm25 import BM25Okapi
 
@@ -13,7 +13,7 @@ from rank_bm25 import BM25Okapi
 class FinancialSituationMemory:
     """Memory system for storing and retrieving financial situations using BM25."""
 
-    def __init__(self, name: str, config: dict = None):
+    def __init__(self, name: str, config: dict[str, Any] | None = None):
         """Initialize the memory system.
 
         Args:
