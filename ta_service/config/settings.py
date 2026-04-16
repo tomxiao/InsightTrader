@@ -28,6 +28,9 @@ class Settings:
     results_root: Path = Path(os.getenv("TA_SERVICE_RESULTS_DIR", "./results/ta_service"))
     reports_root: Path = Path(os.getenv("TA_SERVICE_REPORTS_DIR", "./reports"))
     logs_root: Path = Path(os.getenv("TA_SERVICE_LOG_DIR", "./logs"))
+    version_file: Path = Path(
+        os.getenv("TA_SERVICE_VERSION_FILE", str(Path.cwd() / "deploy" / "VERSION"))
+    )
     followup_report_context_chars: int = int(
         os.getenv("TA_SERVICE_FOLLOWUP_REPORT_CONTEXT_CHARS", "8000")
     )

@@ -2,6 +2,20 @@
 
 目标服务器：`93901.pro`
 
+## 部署版本号规范
+
+- 版本文件：`deploy/VERSION`
+- 每次部署前，都必须先更新 `deploy/VERSION` 内的版本号
+- 版本号格式固定为：`yyyy.mmdd.hhmm`
+- 示例：`2026.0416.1534`
+
+建议在开始执行下面任一部署场景前，先运行：
+
+```powershell
+Set-Content -Path .\deploy\VERSION -Value (Get-Date -Format 'yyyy.MMdd.HHmm')
+Get-Content .\deploy\VERSION
+```
+
 ## 前置：设置本机变量
 
 > 每次打开新 PowerShell 终端后执行一次，后续命令直接复制粘贴。
@@ -20,8 +34,8 @@ $PEM  = "$env:USERPROFILE\.ssh\InsightTrader.pem"
 
 | 改动范围 | 执行场景 | 预计耗时 |
 |---------|---------|---------|
-| 只改 Python 逻辑（无新依赖） | [场景 A](#场景-a仅更新后端) | ~1 min |
-| 新增 Python 依赖（pyproject.toml 有变更） | [场景 A](#场景-a仅更新后端) | ~5~10 min |
+| 只改 Python 逻辑（无依赖变化） | [场景 A](#场景-a仅更新后端) | ~1~3 min |
+| 新增/升级 Python 依赖（`pyproject.toml` 或 `uv.lock` 有变更） | [场景 A](#场景-a仅更新后端) | ~5~10 min |
 | 只改前端 | [场景 B](#场景-b仅更新前端) | ~2 min |
 | 前后端都改 | [场景 C](#场景-c前后端同时更新) | ~3~12 min |
 | 只改环境变量 | [场景 D](#场景-d更新环境变量) | <1 min |
@@ -31,9 +45,12 @@ $PEM  = "$env:USERPROFILE\.ssh\InsightTrader.pem"
 
 ## 场景 A：仅更新后端
 
-适用于 `ta_service/`、`tradingagents/`、`Dockerfile.ta_service`、`docker-compose.prod.yml`、`pyproject.toml` 有变更。
+适用于 `ta_service/`、`tradingagents/`、`Dockerfile.ta_service`、`docker-compose.prod.yml`、`pyproject.toml`、`uv.lock` 有变更。
 
 ```powershell
+# 0. 更新部署版本号
+Set-Content -Path .\deploy\VERSION -Value (Get-Date -Format 'yyyy.MMdd.HHmm')
+
 # 1. 上传后端代码
 cd $REPO
 python deploy/upload.py
@@ -48,8 +65,10 @@ ssh -i $PEM root@93901.pro "curl -s http://127.0.0.1:8100/health"
 期望输出：`{"status":"ok"}`
 
 > **说明**
-> - 只改 Python 逻辑（无新依赖）时，Docker 层缓存命中，`build` 约 **1 分钟**完成。
-> - `pyproject.toml` 有新依赖时，需重新 pip install，约 **5~10 分钟**。
+> - 后端镜像现在基于 `pyproject.toml + uv.lock` 构建依赖层，使用 `uv sync --frozen --no-dev --no-editable` 安装。
+> - 只改 Python 逻辑（无依赖变化）时，依赖层通常会命中缓存，不应再每次重新下载整套依赖；`build` 通常约 **1~3 分钟**。
+> - 只有 `pyproject.toml` 或 `uv.lock` 变化时，依赖层才会重新安装，约 **5~10 分钟**。
+> - 如果修改了依赖，提交前必须同步更新 `uv.lock`，否则生产构建会因 `--frozen` 失败。
 > - `mongo` 和 `redis` 容器不受影响，数据通过 Docker volume 持久化。
 
 ---
@@ -59,6 +78,9 @@ ssh -i $PEM root@93901.pro "curl -s http://127.0.0.1:8100/health"
 适用于 `mobile_h5/` 有变更。
 
 ```powershell
+# 0. 更新部署版本号
+Set-Content -Path .\deploy\VERSION -Value (Get-Date -Format 'yyyy.MMdd.HHmm')
+
 # 1. 本地构建（服务器不需要 Node.js）
 cd $REPO\mobile_h5
 npm run build
@@ -77,6 +99,9 @@ python deploy/upload_dist.py
 按顺序执行场景 A 和场景 B：
 
 ```powershell
+# ── 更新部署版本号 ──────────────────────────────────────────────────────────────
+Set-Content -Path .\deploy\VERSION -Value (Get-Date -Format 'yyyy.MMdd.HHmm')
+
 # ── 后端 ──────────────────────────────────────────────────────────────────────
 cd $REPO
 python deploy/upload.py
@@ -101,6 +126,9 @@ ssh -i $PEM root@93901.pro "curl -s http://127.0.0.1:8100/health && curl -sk -o 
 适用于修改了 `deploy/write_env.sh`（如更换 API Key、调整超时时长等）。
 
 ```powershell
+# 0. 更新部署版本号
+Set-Content -Path .\deploy\VERSION -Value (Get-Date -Format 'yyyy.MMdd.HHmm')
+
 # 1. 上传脚本并在服务器执行，覆盖写入 /opt/insighttrader/.env
 scp -i $PEM deploy\write_env.sh root@93901.pro:/root/write_env.sh
 ssh -i $PEM root@93901.pro "bash /root/write_env.sh"
@@ -121,6 +149,9 @@ ssh -i $PEM root@93901.pro "grep TA_SERVICE_ENV /opt/insighttrader/.env"
 适用于修改了 `deploy/nginx.conf`（如调整超时、缓存策略等）。
 
 ```powershell
+# 0. 更新部署版本号
+Set-Content -Path .\deploy\VERSION -Value (Get-Date -Format 'yyyy.MMdd.HHmm')
+
 # 上传新配置，验证语法后无停机热重载
 scp -i $PEM deploy\nginx.conf root@93901.pro:/opt/insighttrader/deploy/nginx.conf
 ssh -i $PEM root@93901.pro "cp /opt/insighttrader/deploy/nginx.conf /etc/nginx/sites-available/insighttrader && nginx -t && systemctl reload nginx"

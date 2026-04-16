@@ -1,18 +1,27 @@
-# ── Stage 1: 构建依赖 ──────────────────────────────────────────────────────────
+# ── Stage 1: 构建依赖与项目安装 ────────────────────────────────────────────────
 FROM m.daocloud.io/docker.io/library/python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    UV_LINK_MODE=copy \
+    UV_PROJECT_ENVIRONMENT=/opt/venv
 
-RUN python -m venv /opt/venv
+RUN pip install --no-cache-dir uv && python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /build
-COPY pyproject.toml .
-COPY . .
 
-# 使用清华镜像加速（国内服务器），如海外服务器可去掉 -i 参数
-RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple .
+# 先复制锁文件和依赖描述，让依赖层只受 pyproject.toml / uv.lock 影响
+COPY pyproject.toml uv.lock README.md ./
+
+# 再复制运行时需要的源码与版本文件
+COPY ta_service ./ta_service
+COPY tradingagents ./tradingagents
+COPY cli ./cli
+COPY deploy/VERSION ./deploy/VERSION
+
+# 使用 uv.lock 冻结依赖安装；非 editable 安装，避免运行时依赖源码路径
+RUN uv sync --frozen --no-dev --no-editable
 
 # ── Stage 2: 运行时镜像 ────────────────────────────────────────────────────────
 FROM m.daocloud.io/docker.io/library/python:3.12-slim
@@ -26,11 +35,15 @@ ENV PATH="/opt/venv/bin:$PATH"
 RUN useradd --create-home appuser
 WORKDIR /home/appuser/app
 
-COPY --from=builder --chown=appuser:appuser /build .
+COPY --from=builder --chown=appuser:appuser /build/ta_service ./ta_service
+COPY --from=builder --chown=appuser:appuser /build/tradingagents ./tradingagents
+COPY --from=builder --chown=appuser:appuser /build/cli ./cli
+COPY --from=builder --chown=appuser:appuser /build/README.md ./README.md
+COPY --from=builder --chown=appuser:appuser /build/deploy/VERSION ./deploy/VERSION
 
 # 创建运行时需要的目录（dataflows/data_cache 用于 tradingagents 数据缓存）
 RUN mkdir -p logs reports results dataflows/data_cache && \
-    chown -R appuser:appuser logs reports results dataflows
+    chown -R appuser:appuser logs reports results dataflows deploy
 
 USER appuser
 

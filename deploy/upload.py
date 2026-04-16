@@ -26,6 +26,7 @@ INCLUDE_FILES = {
     "docker-compose.prod.yml",
     "pyproject.toml",
     ".env.production.example",
+    "deploy/VERSION",
 }
 
 # 目录内部的排除规则
