@@ -5,12 +5,13 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.message import add_messages
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import (
     create_decision_manager,
     create_fundamentals_analyst,
-    create_market_analyst,
+    create_market_analyst_fast,
     create_msg_delete,
     create_news_analyst,
 )
@@ -34,6 +35,12 @@ from tradingagents.observability import NodeEventTracker, resolve_node_kind, res
 
 
 class LiteTradingGraph:
+    _BRANCH_MESSAGE_KEYS = {
+        "market": "market_messages",
+        "news": "news_messages",
+        "fundamentals": "fundamentals_messages",
+    }
+
     def __init__(
         self,
         selected_analysts: Optional[List[str]] = None,
@@ -148,13 +155,46 @@ class LiteTradingGraph:
 
         return instrumented_node
 
+    def _get_branch_message_key(self, analyst_type: str) -> str:
+        return self._BRANCH_MESSAGE_KEYS[analyst_type]
+
+    def _build_branch_state(self, state: AgentState, analyst_type: str) -> Dict[str, Any]:
+        branch_key = self._get_branch_message_key(analyst_type)
+        branch_messages = state.get(branch_key) or state.get("messages", [])
+        branch_state = dict(state)
+        branch_state["messages"] = branch_messages
+        return branch_state
+
+    def _wrap_branch_node(self, analyst_type: str, node):
+        branch_key = self._get_branch_message_key(analyst_type)
+
+        def branch_node(state: AgentState) -> dict:
+            result = self._invoke_node(node, self._build_branch_state(state, analyst_type))
+            updates = {key: value for key, value in result.items() if key != "messages"}
+            if "messages" in result:
+                updates[branch_key] = add_messages(
+                    state.get(branch_key) or state.get("messages", []),
+                    result["messages"],
+                )
+            return updates
+
+        return branch_node
+
+    def _wrap_branch_condition(self, analyst_type: str):
+        branch_condition = getattr(self.conditional_logic, f"should_continue_{analyst_type}")
+
+        def condition(state: AgentState):
+            return branch_condition(self._build_branch_state(state, analyst_type))
+
+        return condition
+
     def _setup_graph(self, selected_analysts: List[str]):
         allowed = [item for item in selected_analysts if item in {"market", "news", "fundamentals"}]
         if not allowed:
             raise ValueError("LiteTradingGraph requires at least one of market/news/fundamentals")
 
         analyst_nodes = {
-            "market": create_market_analyst(self.quick_thinking_llm),
+            "market": create_market_analyst_fast(self.quick_thinking_llm),
             "news": create_news_analyst(self.quick_thinking_llm),
             "fundamentals": create_fundamentals_analyst(self.quick_thinking_llm),
         }
@@ -168,15 +208,24 @@ class LiteTradingGraph:
             tool_node_name = f"tools_{analyst_type}"
             workflow.add_node(
                 analyst_node_name,
-                self._with_node_observability(analyst_node_name, analyst_nodes[analyst_type]),
+                self._with_node_observability(
+                    analyst_node_name,
+                    self._wrap_branch_node(analyst_type, analyst_nodes[analyst_type]),
+                ),
             )
             workflow.add_node(
                 clear_node_name,
-                self._with_node_observability(clear_node_name, delete_node),
+                self._with_node_observability(
+                    clear_node_name,
+                    self._wrap_branch_node(analyst_type, delete_node),
+                ),
             )
             workflow.add_node(
                 tool_node_name,
-                self._with_node_observability(tool_node_name, self.tool_nodes[analyst_type]),
+                self._with_node_observability(
+                    tool_node_name,
+                    self._wrap_branch_node(analyst_type, self.tool_nodes[analyst_type]),
+                ),
             )
 
         workflow.add_node(
@@ -184,24 +233,21 @@ class LiteTradingGraph:
             self._with_node_observability("Decision Manager", decision_manager_node),
         )
 
-        first_analyst = allowed[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
-
-        for index, analyst_type in enumerate(allowed):
+        clear_nodes: list[str] = []
+        for analyst_type in allowed:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
+            clear_nodes.append(current_clear)
+            workflow.add_edge(START, current_analyst)
             workflow.add_conditional_edges(
                 current_analyst,
-                getattr(self.conditional_logic, f"should_continue_{analyst_type}"),
+                self._wrap_branch_condition(analyst_type),
                 [current_tools, current_clear],
             )
             workflow.add_edge(current_tools, current_analyst)
-            if index < len(allowed) - 1:
-                next_analyst = f"{allowed[index + 1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Decision Manager")
+
+        workflow.add_edge(clear_nodes, "Decision Manager")
 
         workflow.add_edge("Decision Manager", END)
         return workflow.compile()

@@ -42,13 +42,6 @@ dependencies = [
     "paramiko>=4.0.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "build",
-    "pre-commit",
-    "ruff",
-]
-
 [project.scripts]
 tradingagents = "cli.main:app"
 ta-service = "ta_service.main:run"
@@ -79,5 +72,9 @@ default = true
 
 [dependency-groups]
 dev = [
+    "build",
     "debugpy>=1.8.20",
+    "pre-commit",
+    "pytest>=9.0.3",
+    "ruff",
 ]

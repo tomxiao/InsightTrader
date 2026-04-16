@@ -46,6 +46,8 @@ class AnalysisTaskRepository:
             "message": "任务已进入队列",
             "elapsedTime": 0,
             "remainingTime": None,
+            "stageSnapshot": {},
+            "stageTimeline": {},
             "runId": None,
             "traceDir": None,
             "createdAt": now,

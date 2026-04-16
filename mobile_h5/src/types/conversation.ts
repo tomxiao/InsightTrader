@@ -24,11 +24,21 @@ export interface TaskProgress {
   status?: string
   stageId?: string
   nodeId?: string
+  stageSnapshot?: Record<string, string> | null
   displayState?: 'pending' | 'active' | 'stalled' | 'done' | 'failed' | string
   currentStep?: string
   message?: string
   elapsedTime?: number
   remainingTime?: number
+  tasks?: TaskProgressItem[]
+}
+
+export interface TaskProgressItem {
+  stageId: string
+  label: string
+  status: string
+  startedAt?: string | null
+  completedAt?: string | null
 }
 
 export interface ConversationSummary {

@@ -14,7 +14,7 @@ import { useConversationPolling } from '@composables/useConversationPolling'
 import { useDrawerPolling } from '@composables/useDrawerPolling'
 import { useAuthStore } from '@stores/auth'
 import { useConversationStore } from '@stores/conversation'
-import type { ConversationMessage, ConversationSummary } from '@/types/conversation'
+import type { ConversationMessage, ConversationSummary, TaskProgressItem } from '@/types/conversation'
 import {
   MessageType,
   isTaskStatusContent,
@@ -671,32 +671,160 @@ const getTaskStatusState = () => {
   return 'active'
 }
 
+const getStageGroup = (stageId?: string | null) => stageId?.split('.')[0] || ''
+
+const isParallelAnalystStage = (stageId?: string | null) => getStageGroup(stageId) === 'analysts'
+
+const taskStageSnapshot = computed(() => taskProgress.value?.stageSnapshot || {})
+
 const isLatestTaskStatusMessage = (message: ConversationMessage) =>
   message.id === latestTaskStatusId.value
 
 const getTaskStatusTimelineItems = () =>
   taskStatusMessages.value.map(message => {
     const content = isTaskStatusContent(message.messageType, message.content) ? message.content : null
+    const state = getTaskStatusState()
+    const messageStageId = content?.stageId
+    const currentStageId = taskProgress.value?.stageId
+    const snapshotState = messageStageId ? taskStageSnapshot.value[messageStageId] : undefined
+    const isCurrentAnalystGroup =
+      state !== 'done' &&
+      state !== 'failed' &&
+      isParallelAnalystStage(currentStageId) &&
+      isParallelAnalystStage(messageStageId) &&
+      (snapshotState === 'in_progress' || snapshotState === 'stalled')
+    const visualState =
+      snapshotState === 'completed'
+        ? 'done'
+        : snapshotState === 'failed'
+          ? 'failed'
+          : snapshotState === 'pending'
+            ? 'pending'
+            : isCurrentAnalystGroup || isLatestTaskStatusMessage(message)
+              ? state
+              : 'done'
     return {
       id: message.id,
+      stageId: messageStageId,
       title: getTaskStatusCopy(content?.stageId, null, getMessageText(message)),
       time: formatTimeLabel(message.createdAt),
-      isCurrent:
-        getTaskStatusState() !== 'done' &&
-        getTaskStatusState() !== 'failed' &&
-        isLatestTaskStatusMessage(message)
+      createdAt: message.createdAt,
+      visualState,
+      isCurrent: visualState === 'active' || visualState === 'stalled'
     }
   })
+
+const getCurrentTaskTimelineItems = () => getTaskStatusTimelineItems().filter(item => item.isCurrent)
+
+const getTaskProgressItems = (): TaskProgressItem[] => {
+  if (taskProgress.value?.tasks?.length) {
+    return taskProgress.value.tasks
+  }
+  return getTaskStatusTimelineItems().map(item => ({
+      stageId: item.stageId || item.id,
+      label: item.title,
+      status:
+      item.visualState === 'done'
+        ? 'completed'
+        : item.visualState === 'failed'
+          ? 'failed'
+          : item.visualState === 'stalled'
+            ? 'stalled'
+            : item.visualState === 'active'
+            ? 'in_progress'
+              : 'pending',
+      completedAt: item.visualState === 'done' ? item.createdAt : undefined,
+  }))
+}
+
+const getTaskItemTimeLabel = (item: TaskProgressItem) =>
+  item.completedAt ? formatTimeLabel(item.completedAt) : ''
+
+const getTaskItemStatusLabel = (item: TaskProgressItem) => {
+  if (item.status === 'completed') return getTaskItemTimeLabel(item)
+  if (item.status === 'failed') return '未完成'
+  if (item.status === 'in_progress' || item.status === 'stalled') return '工作中'
+  return '待完成'
+}
+
+const getCompletedTaskCount = () =>
+  getTaskProgressItems().filter(item => item.status === 'completed').length
+
+const getTaskFooterText = () => {
+  const total = getTaskProgressItems().length
+  const completed = getCompletedTaskCount()
+  const state = getTaskStatusState()
+  if (state === 'done') {
+    return `已完成，耗时 ${formatSeconds(taskProgress.value?.elapsedTime)}`
+  }
+  if (state === 'failed') {
+    return `未完成，已用 ${formatSeconds(taskProgress.value?.elapsedTime)}`
+  }
+  return `已完成 ${completed} / ${total}，已用 ${formatSeconds(taskProgress.value?.elapsedTime)}`
+}
+
+const getTaskStatusSublineForStage = (stageId?: string | null, currentCount = 1) => {
+  if (getTaskStatusState() === 'failed') return '分析流程已中断，你可以稍后重新发起。'
+  if (getTaskStatusState() === 'done') return '分析流程已完成，团队已经给出最终结果。'
+  if (getTaskStatusState() === 'stalled') return '处理时间比平时更长，但任务仍在继续。'
+  if (currentCount > 1 && isParallelAnalystStage(stageId)) {
+    return '该分析视角正在与其他分析师并行处理，完成后会统一汇总为最终结论。'
+  }
+  return '投资团队正在持续处理数据、观点和风险信息。'
+}
+
+const getTaskStatusCardItems = () => {
+  const state = getTaskStatusState()
+  if (state === 'done' || state === 'failed') {
+    return [
+      {
+        id: 'task-status-overall',
+        stageId: taskProgress.value?.stageId,
+        title: getCurrentTaskStatusHeadline(),
+        subtitle: getCurrentTaskStatusSubline(),
+        state,
+        time: '',
+      },
+    ]
+  }
+
+  const currentItems = getCurrentTaskTimelineItems()
+  if (currentItems.length > 0) {
+    return currentItems.map(item => ({
+      id: item.id,
+      stageId: item.stageId,
+      title: item.title,
+      subtitle: getTaskStatusSublineForStage(item.stageId, currentItems.length),
+      state: item.visualState,
+      time: item.time,
+    }))
+  }
+
+  return [
+    {
+      id: 'task-status-fallback',
+      stageId: taskProgress.value?.stageId,
+      title: getCurrentTaskStatusHeadline(),
+      subtitle: getCurrentTaskStatusSubline(),
+      state,
+      time: '',
+    },
+  ]
+}
 
 const getCurrentTaskStatusHeadline = () => {
   const state = getTaskStatusState()
   if (state === 'done') return '分析已完成'
   if (state === 'failed') return '分析未能完成'
+  const currentItems = getCurrentTaskTimelineItems()
+  if (currentItems.length > 1) {
+    return '投资团队并行推进多路分析'
+  }
   return (
     getTaskStatusCopy(taskProgress.value?.stageId, taskProgress.value?.nodeId) ||
     taskProgress.value?.currentStep ||
     taskProgress.value?.message ||
-    getTaskStatusTimelineItems().find(item => item.isCurrent)?.title ||
+    currentItems[0]?.title ||
     '投资团队推进分析'
   )
 }
@@ -706,10 +834,29 @@ const getCurrentTaskStatusSubline = () => {
   if (state === 'failed') return '分析流程已中断，你可以稍后重新发起。'
   if (state === 'done') return '分析流程已完成，团队已经给出最终结果。'
   if (state === 'stalled') return '处理时间比平时更长，但任务仍在继续。'
+  if (getCurrentTaskTimelineItems().length > 1) {
+    return '多个分析视角正在并行处理，完成后会统一汇总为最终结论。'
+  }
   return '投资团队正在持续处理数据、观点和风险信息。'
 }
 
 const getTaskStatusStateForMessage = (message: ConversationMessage) => {
+  const content = isTaskStatusContent(message.messageType, message.content) ? message.content : null
+  const state = getTaskStatusState()
+  const snapshotState = content?.stageId ? taskStageSnapshot.value[content.stageId] : undefined
+  if (snapshotState === 'completed') return 'done'
+  if (snapshotState === 'failed') return 'failed'
+  if (snapshotState === 'pending') return 'pending'
+  if (snapshotState === 'in_progress') return state
+  if (snapshotState === 'stalled') return 'stalled'
+  if (
+    state !== 'done' &&
+    state !== 'failed' &&
+    isParallelAnalystStage(taskProgress.value?.stageId) &&
+    isParallelAnalystStage(content?.stageId)
+  ) {
+    return state
+  }
   if (!isLatestTaskStatusMessage(message)) return 'done'
   return getTaskStatusState()
 }
@@ -1124,47 +1271,25 @@ onUnmounted(() => {
               </section>
             </template>
 
-            <template v-else-if="message.messageType === MessageType.TASK_STATUS">
+              <template v-else-if="message.messageType === MessageType.TASK_STATUS">
               <div v-if="shouldRenderTaskStatusCard(message)" class="task-status-wrapper">
                 <div
                   class="task-status-card"
                   :class="`is-${getTaskStatusState()}`"
                 >
-                  <div class="task-status-card__head">
-                    <div class="task-status-card__indicator" aria-hidden="true" />
-                    <div class="task-status-card__title-wrap">
-                      <span class="task-status-card__eyebrow">投资团队进度</span>
-                      <p class="task-status-card__title">{{ getCurrentTaskStatusHeadline() }}</p>
-                    </div>
-                    <span class="task-status-card__state">{{ taskStatusStateLabelMap[getTaskStatusState()] || taskStatusStateLabelMap.active }}</span>
-                  </div>
-                  <p class="task-status-card__subtitle">{{ getCurrentTaskStatusSubline() }}</p>
                   <div
-                    v-if="getTaskStatusTimelineItems().length > 1"
-                    class="task-status-timeline"
+                    v-for="item in getTaskProgressItems()"
+                    :key="item.stageId"
+                    class="task-status-list__item"
+                    :class="`is-${item.status}`"
                   >
-                    <div
-                      v-for="item in getTaskStatusTimelineItems()"
-                      :key="item.id"
-                      class="task-status-timeline__item"
-                      :class="{ 'is-current': item.isCurrent }"
-                    >
-                      <span class="task-status-timeline__dot" aria-hidden="true" />
-                      <div class="task-status-timeline__body">
-                        <div class="task-status-timeline__row">
-                          <p class="task-status-timeline__title">{{ item.title }}</p>
-                          <span class="task-status-timeline__time">{{ item.time }}</span>
-                        </div>
-                      </div>
-                    </div>
+                    <span class="task-status-list__dot" aria-hidden="true" />
+                    <p class="task-status-list__label">{{ item.label }}</p>
+                    <span class="task-status-list__status">{{ getTaskItemStatusLabel(item) }}</span>
                   </div>
-                </div>
-                <div
-                  v-if="shouldShowTaskStatusTimers"
-                  class="task-status-card__timers"
-                >
-                  <span>已用 {{ formatSeconds(taskProgress?.elapsedTime) }}</span>
-                  <span v-if="shouldShowRemainingTime">· 预计剩余 {{ formatSeconds(taskProgress?.remainingTime) }}</span>
+                  <div class="task-status-card__footer">
+                    {{ getTaskFooterText() }}
+                  </div>
                 </div>
               </div>
             </template>
@@ -1586,144 +1711,44 @@ onUnmounted(() => {
   background: rgba(255, 255, 255, 0.03);
 }
 
-.task-status-card__head {
+.task-status-list__item {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 10px;
 }
 
-.task-status-card__indicator {
+.task-status-list__item + .task-status-list__item {
+  margin-top: 10px;
+}
+
+.task-status-list__dot {
   width: 10px;
   height: 10px;
-  margin-top: 6px;
   border-radius: 999px;
   flex-shrink: 0;
-  background: rgba(93, 139, 255, 0.88);
-  box-shadow:
-    0 0 0 4px rgba(93, 139, 255, 0.16),
-    0 0 14px rgba(93, 139, 255, 0.38);
+  background: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.04);
 }
 
-.task-status-card.is-active .task-status-card__indicator,
-.task-status-card.is-stalled .task-status-card__indicator {
-  animation: task-status-pulse 1.5s ease-in-out infinite;
-}
-
-.task-status-card.is-done .task-status-card__indicator {
+.task-status-list__item.is-completed .task-status-list__dot {
   background: rgba(69, 214, 156, 0.92);
   box-shadow: 0 0 0 4px rgba(69, 214, 156, 0.12);
 }
 
-.task-status-card.is-failed .task-status-card__indicator {
+.task-status-list__item.is-failed .task-status-list__dot {
   background: rgba(255, 107, 107, 0.92);
   box-shadow: 0 0 0 4px rgba(255, 107, 107, 0.12);
 }
 
-.task-status-card__title-wrap {
-  flex: 1;
-  min-width: 0;
-}
-
-.task-status-card__eyebrow {
-  display: inline-block;
-  margin-bottom: 5px;
-  color: var(--mobile-color-text-tertiary);
-  font-size: 11px;
-  font-weight: 600;
-}
-
-.task-status-card__title,
-.task-status-card__subtitle {
-  margin: 0;
-}
-
-.task-status-card__title {
-  color: var(--mobile-color-text);
-  font-size: 14px;
-  line-height: 1.55;
-  font-weight: 600;
-}
-
-.task-status-card__subtitle {
-  margin-top: 8px;
-  padding-left: 20px;
-  color: var(--mobile-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.task-status-card__state {
-  flex-shrink: 0;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(93, 139, 255, 0.14);
-  color: rgba(185, 211, 255, 0.96);
-  font-size: 11px;
-  line-height: 1.5;
-  font-weight: 600;
-}
-
-.task-status-card.is-done .task-status-card__state {
-  background: rgba(69, 214, 156, 0.14);
-  color: rgba(184, 255, 223, 0.96);
-}
-
-.task-status-card.is-failed .task-status-card__state {
-  background: rgba(255, 107, 107, 0.14);
-  color: rgba(255, 210, 210, 0.96);
-}
-
-.task-status-card__timers {
-  display: flex;
-  gap: 6px;
-  padding: 0 4px 4px 20px;
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--mobile-color-text-tertiary);
-  opacity: 0.75;
-  overflow: hidden;
-}
-
-.task-status-timeline {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.task-status-timeline__item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  opacity: 0.72;
-}
-
-.task-status-timeline__item.is-current {
-  opacity: 1;
-}
-
-.task-status-timeline__dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 6px;
+.task-status-list__item.is-in_progress .task-status-list__dot,
+.task-status-list__item.is-stalled .task-status-list__dot {
   position: relative;
-  border-radius: 999px;
-  flex-shrink: 0;
-  background: rgba(69, 214, 156, 0.88);
-  box-shadow: 0 0 0 4px rgba(69, 214, 156, 0.1);
-}
-
-.task-status-timeline__item.is-current .task-status-timeline__dot {
-  width: 8px;
-  height: 8px;
-  margin-top: 6px;
   background: transparent;
   box-shadow: none;
 }
 
-.task-status-timeline__item.is-current .task-status-timeline__dot::before {
+.task-status-list__item.is-in_progress .task-status-list__dot::before,
+.task-status-list__item.is-stalled .task-status-list__dot::before {
   content: '';
   position: absolute;
   top: 50%;
@@ -1746,7 +1771,8 @@ onUnmounted(() => {
   animation: task-status-spinner 0.8s linear infinite;
 }
 
-.task-status-timeline__item.is-current .task-status-timeline__dot::after {
+.task-status-list__item.is-in_progress .task-status-list__dot::after,
+.task-status-list__item.is-stalled .task-status-list__dot::after {
   content: '';
   position: absolute;
   inset: 2px;
@@ -1755,39 +1781,40 @@ onUnmounted(() => {
   box-shadow: 0 0 6px rgba(93, 139, 255, 0.2);
 }
 
-.task-status-timeline__body {
+.task-status-list__label {
   flex: 1;
   min-width: 0;
-}
-
-.task-status-timeline__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.task-status-timeline__title,
-.task-status-timeline__time {
   margin: 0;
-}
-
-.task-status-timeline__title {
-  color: var(--mobile-color-text-secondary);
-  font-size: 12px;
-  line-height: 1.6;
-}
-
-.task-status-timeline__item.is-current .task-status-timeline__title {
   color: var(--mobile-color-text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.task-status-list__item.is-in_progress .task-status-list__label,
+.task-status-list__item.is-stalled .task-status-list__label {
   font-weight: 600;
 }
 
-.task-status-timeline__time {
+.task-status-list__status {
   flex-shrink: 0;
   color: var(--mobile-color-text-tertiary);
   font-size: 11px;
   line-height: 1.5;
+}
+
+.task-status-list__item.is-in_progress .task-status-list__status,
+.task-status-list__item.is-stalled .task-status-list__status {
+  color: rgba(185, 211, 255, 0.96);
+  font-weight: 600;
+}
+
+.task-status-card__footer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--mobile-color-text-tertiary);
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 @keyframes task-status-pulse {

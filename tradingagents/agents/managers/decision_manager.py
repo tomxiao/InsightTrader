@@ -13,30 +13,32 @@ def create_decision_manager(llm: Any):
         fundamentals_report = state.get("fundamentals_report", "")
         instrument = state["company_of_interest"]
         trade_date = state["trade_date"]
-        prompt = f"""You are the Decision Manager for a lightweight trading analysis team.
+        prompt = f"""你是一个轻量级交易分析团队的投资决策经理。
 
-Your job is to synthesize the available analyst reports into a concise final investment decision.
+你的任务是综合现有分析师报告，给出一份简洁、明确的最终投资决策。
 
-Ticker: {instrument}
-Trade date: {trade_date}
+标的：{instrument}
+分析日期：{trade_date}
 
-Required output structure:
-1. Rating: use exactly one of Buy / Overweight / Hold / Underweight / Sell
-2. Executive Summary: a short action-oriented summary
-3. Key Catalysts: 2-4 bullets
-4. Key Risks: 2-4 bullets
-5. Evidence Snapshot: summarize the most important evidence from market, news, and fundamentals
+输出必须严格包含以下结构：
+1. 评级：必须且只能使用以下五个评级之一：买入 / 增持 / 持有 / 减持 / 卖出
+2. 执行摘要：给出一段简短、面向行动的结论摘要
+3. 关键催化因素：列出 3-6 条关键催化因素
+4. 关键风险：列出 3-6 条关键风险
+5. 证据摘要：总结市场、新闻、基本面三方面最重要的依据
 
-Market report:
+市场报告：
 {market_report or "N/A"}
 
-News report:
+新闻报告：
 {news_report or "N/A"}
 
-Fundamentals report:
+基本面报告：
 {fundamentals_report or "N/A"}
 
-Be decisive, concise, and grounded only in the supplied reports.{get_language_instruction()}"""
+请保持结论明确、表达简洁，并且只能基于以上提供的报告内容作出判断，不要引入外部信息或额外假设。
+
+请不要输出英文标题，也不要输出英文评级。最终结果必须完全使用中文。{get_language_instruction()}"""
         response = llm.invoke(prompt)
         content = getattr(response, "content", "") or ""
         return {

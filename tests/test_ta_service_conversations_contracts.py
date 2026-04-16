@@ -14,6 +14,12 @@ def _task_doc(**overrides: object) -> dict:
         "status": "running",
         "stageId": "analysts.news",
         "nodeId": "News Analyst",
+        "stageSnapshot": {
+            "analysts.market": "in_progress",
+            "analysts.news": "in_progress",
+            "analysts.fundamentals": "pending",
+            "decision.finalize": "pending",
+        },
         "currentStep": None,
         "message": None,
         "elapsedTime": 12,
@@ -30,9 +36,20 @@ def test_build_task_progress_prefers_node_mapping_and_enriches_fields() -> None:
 
     assert progress.stageId == "analysts.news"
     assert progress.nodeId == "News Analyst"
+    assert progress.stageSnapshot is not None
+    assert progress.stageSnapshot["analysts.market"] == "in_progress"
     assert progress.displayState == "active"
     assert progress.currentStep == "新闻分析师整理近期关键事件"
     assert progress.message == "新闻分析师整理近期关键事件"
+    assert [item.stageId for item in progress.tasks] == [
+        "analysts.market",
+        "analysts.news",
+        "analysts.fundamentals",
+        "decision.finalize",
+    ]
+    assert progress.tasks[0].status == "in_progress"
+    assert progress.tasks[1].status == "in_progress"
+    assert progress.tasks[2].status == "pending"
 
 
 def test_build_conversation_detail_keeps_task_progress_for_report_ready() -> None:

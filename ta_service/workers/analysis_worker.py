@@ -22,6 +22,45 @@ from ta_service.workers.queue import AnalysisJobQueue
 LOGGER = logging.getLogger(__name__)
 
 
+def _utc_now_iso() -> str:
+    from datetime import datetime, timezone
+
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _merge_stage_timeline(
+    stage_timeline: dict[str, dict] | None,
+    stage_snapshot: dict[str, str] | None,
+) -> dict[str, dict]:
+    timeline = {key: dict(value) for key, value in (stage_timeline or {}).items()}
+    now = _utc_now_iso()
+    for stage_id, status in (stage_snapshot or {}).items():
+        item = timeline.setdefault(stage_id, {})
+        previous_status = item.get("status")
+        item["status"] = status
+        if status in {"in_progress", "stalled", "completed", "failed"} and not item.get("startedAt"):
+            item["startedAt"] = now
+        if status in {"completed", "failed"} and previous_status != status and not item.get("completedAt"):
+            item["completedAt"] = now
+    return timeline
+
+
+def _finalize_failed_stage_snapshot(
+    stage_snapshot: dict[str, str] | None,
+    failed_stage_id: str | None,
+) -> dict[str, str]:
+    snapshot = dict(stage_snapshot or {})
+    if failed_stage_id:
+        if failed_stage_id not in snapshot:
+            snapshot[failed_stage_id] = "failed"
+        for stage_id, status in list(snapshot.items()):
+            if stage_id == failed_stage_id:
+                snapshot[stage_id] = "failed"
+            elif status == "in_progress":
+                snapshot[stage_id] = "pending"
+    return snapshot
+
+
 class AnalysisTaskRunner:
     def __init__(self):
         self.settings = get_settings()
@@ -97,6 +136,17 @@ class AnalysisTaskRunner:
                 payload={"nodeId": node_id, "message": label, "elapsedTime": elapsed},
             )
 
+        def on_stage_snapshot(stage_snapshot: dict[str, str]) -> None:
+            existing_task_doc = self.task_repo.get_by_task_id(job.taskId) or {}
+            self.task_repo.update_status(
+                job.taskId,
+                stageSnapshot=stage_snapshot,
+                stageTimeline=_merge_stage_timeline(
+                    existing_task_doc.get("stageTimeline"),
+                    stage_snapshot,
+                ),
+            )
+
         team_spec = get_team_spec(job.teamId)
         runner_request = RunnerRequest(
             ticker=job.ticker,
@@ -105,6 +155,7 @@ class AnalysisTaskRunner:
             team_id=normalize_team_id(job.teamId),
             on_stage_change=on_stage_change,
             on_node_change=on_node_change,
+            on_stage_snapshot=on_stage_snapshot,
         )
         diagnostics = self.runner.build_runtime_diagnostics(runner_request)
         diagnostics["worker"] = {
@@ -180,12 +231,23 @@ class AnalysisTaskRunner:
             )
         except Exception as exc:
             LOGGER.exception("analysis job failed: %s", job.taskId)
+            existing_task_doc = self.task_repo.get_by_task_id(job.taskId) or {}
+            failed_stage_snapshot = _finalize_failed_stage_snapshot(
+                existing_task_doc.get("stageSnapshot"),
+                existing_task_doc.get("stageId"),
+            )
+            failed_stage_timeline = _merge_stage_timeline(
+                existing_task_doc.get("stageTimeline"),
+                failed_stage_snapshot,
+            )
             self.task_repo.update_status(
                 job.taskId,
                 status="failed",
                 currentStep="分析执行失败",
                 message=str(exc),
                 elapsedTime=int(time.time() - started_at),
+                stageSnapshot=failed_stage_snapshot,
+                stageTimeline=failed_stage_timeline,
             )
             self.task_event_repo.create(
                 task_id=job.taskId,

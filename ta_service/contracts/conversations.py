@@ -5,6 +5,7 @@ from ta_service.models.conversation import (
     ConversationMessage,
     ConversationSummary,
     TaskProgress,
+    TaskProgressItem,
 )
 from ta_service.runtime.status_mapper import (
     normalize_mobile_status,
@@ -14,6 +15,37 @@ from ta_service.runtime.status_mapper import (
     resolve_remaining_time,
     resolve_stage_message,
 )
+from ta_service.teams import get_team_spec
+
+
+def _build_task_items(task_doc: dict) -> list[TaskProgressItem]:
+    team_spec = get_team_spec(task_doc.get("teamId"))
+    selected_analysts = set(task_doc.get("selectedAnalysts") or [])
+    snapshot = task_doc.get("stageSnapshot") or {}
+    timeline = task_doc.get("stageTimeline") or {}
+    items: list[TaskProgressItem] = []
+
+    for stage in team_spec.stage_contract.stages:
+        if stage.stage_group == "analysts":
+            analyst_key = stage.stage_id.split(".", 1)[1]
+            if selected_analysts and analyst_key not in selected_analysts:
+                continue
+        timeline_item = timeline.get(stage.stage_id) or {}
+        status = (
+            snapshot.get(stage.stage_id)
+            or timeline_item.get("status")
+            or ("completed" if normalize_mobile_status(task_doc.get("status", "")) == "completed" else "pending")
+        )
+        items.append(
+            TaskProgressItem(
+                stageId=stage.stage_id,
+                label=resolve_stage_message(stage.stage_id) or stage.label,
+                status=status,
+                startedAt=timeline_item.get("startedAt"),
+                completedAt=timeline_item.get("completedAt"),
+            )
+        )
+    return items
 
 
 def build_message(document: dict) -> ConversationMessage:
@@ -49,11 +81,13 @@ def build_task_progress(task_doc: dict) -> TaskProgress:
         status=normalize_mobile_status(task_doc.get("status", "")),
         stageId=stage_id,
         nodeId=node_id,
+        stageSnapshot=task_doc.get("stageSnapshot") or None,
         displayState=resolve_display_state(task_doc),
         currentStep=current_step,
         message=message,
         elapsedTime=elapsed,
         remainingTime=resolve_remaining_time(task_doc, elapsed),
+        tasks=_build_task_items(task_doc),
     )
 
 

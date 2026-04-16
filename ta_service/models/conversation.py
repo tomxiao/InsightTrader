@@ -11,11 +11,21 @@ class TaskProgress(BaseModel):
     status: str | None = None
     stageId: str | None = None
     nodeId: str | None = None
+    stageSnapshot: dict[str, str] | None = None
     displayState: str | None = None
     currentStep: str | None = None
     message: str | None = None
     elapsedTime: int | None = None
     remainingTime: int | None = None
+    tasks: list["TaskProgressItem"] = Field(default_factory=list)
+
+
+class TaskProgressItem(BaseModel):
+    stageId: str
+    label: str
+    status: str
+    startedAt: str | None = None
+    completedAt: str | None = None
 
 
 class ConversationSummary(BaseModel):

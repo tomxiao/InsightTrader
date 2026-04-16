@@ -41,6 +41,9 @@ class RunnerRequest:
     on_node_change: Callable[[str, str], None] | None = field(
         default=None, compare=False, hash=False
     )
+    on_stage_snapshot: Callable[[dict[str, str]], None] | None = field(
+        default=None, compare=False, hash=False
+    )
 
 
 @dataclass(frozen=True)
@@ -173,7 +176,15 @@ class TradingAgentsRunner:
                     except Exception:
                         pass
 
-        stage_tracker.sync(self._build_stage_snapshot(team_spec.team_id, selected, {}))
+        def _sync_stage_snapshot(snapshot: dict[str, str]) -> None:
+            stage_tracker.sync(snapshot)
+            if payload.on_stage_snapshot:
+                try:
+                    payload.on_stage_snapshot(snapshot)
+                except Exception:
+                    pass
+
+        _sync_stage_snapshot(self._build_stage_snapshot(team_spec.team_id, selected, {}))
         _notify_stage_change()
 
         try:
@@ -183,7 +194,9 @@ class TradingAgentsRunner:
 
             for chunk in graph.graph.stream(init_state, **args):
                 accumulated.update({key: value for key, value in chunk.items() if value})
-                stage_tracker.sync(self._build_stage_snapshot(team_spec.team_id, selected, accumulated))
+                _sync_stage_snapshot(
+                    self._build_stage_snapshot(team_spec.team_id, selected, accumulated)
+                )
                 _notify_stage_change()
                 final_state = chunk
 
@@ -267,17 +280,13 @@ class TradingAgentsRunner:
     def _build_lite_stage_snapshot(self, selected_analysts: list[str], state: dict) -> dict[str, str]:
         snapshot: dict[str, str] = {}
         lite_order = [item for item in ["market", "news", "fundamentals"] if item in selected_analysts]
-        found_in_progress = False
 
         for analyst_key in lite_order:
             stage_id, report_key = ANALYST_STAGE_MAP[analyst_key]
             if state.get(report_key):
                 snapshot[stage_id] = "completed"
-            elif not found_in_progress:
-                snapshot[stage_id] = "in_progress"
-                found_in_progress = True
             else:
-                snapshot[stage_id] = "pending"
+                snapshot[stage_id] = "in_progress"
 
         if lite_order and all(snapshot.get(ANALYST_STAGE_MAP[key][0]) == "completed" for key in lite_order):
             snapshot["decision.finalize"] = (

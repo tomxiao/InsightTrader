@@ -22,8 +22,8 @@ STAGE_LABELS = {
     "research.debate": "研究团队汇总多方观点并形成研究结论",
     "trader.plan": "交易分析师生成交易方案与执行思路",
     "risk.debate": "风险团队评估下行风险与仓位约束",
-    "portfolio.decision": "投资总监输出最终投资决策",
-    "decision.finalize": "轻量团队输出最终投资结论",
+    "portfolio.decision": "投资总监输出最终决策",
+    "decision.finalize": "投资总监输出最终决策",
 }
 
 NODE_LABELS = {
@@ -40,7 +40,7 @@ NODE_LABELS = {
     "Conservative Analyst": "风险团队评估保守情景",
     "Neutral Analyst": "风险团队评估中性情景",
     "Portfolio Manager": "投资总监输出最终结论",
-    "Decision Manager": "轻量团队汇总分析并输出结论",
+    "Decision Manager": "投资总监汇总分析并输出结论",
 }
 
 

@@ -301,12 +301,19 @@ describe('ConversationPage acceptance', () => {
 
     expect(wrapper.findAll('.task-status-card')).toHaveLength(1)
     expect(wrapper.text()).not.toContain('任务已启动')
-    expect(wrapper.find('.task-status-card__title').text()).toBe('风险团队评估保守情景')
-    expect(wrapper.find('.task-status-card__state').text()).toBe('进行中')
-    expect(wrapper.findAll('.task-status-timeline__item')).toHaveLength(3)
-    expect(wrapper.findAll('.task-status-timeline__item.is-current')).toHaveLength(1)
-    expect(wrapper.find('.task-status-card__timers').text()).toContain('已用 1分钟')
-    expect(wrapper.find('.task-status-card__timers').text()).toContain('预计剩余 6分钟')
+    expect(wrapper.findAll('.task-status-list__item')).toHaveLength(3)
+    expect(wrapper.findAll('.task-status-list__label').map(node => node.text())).toEqual([
+      '市场分析师梳理价格走势与技术信号',
+      '情绪分析师整理社交舆情与市场情绪',
+      '风险团队评估下行风险与仓位约束',
+    ])
+    expect(wrapper.findAll('.task-status-list__status').map(node => node.text())).toEqual([
+      '04/15 16:32',
+      '04/15 16:33',
+      '工作中',
+    ])
+    expect(wrapper.find('.task-status-card__footer').text()).toContain('已完成 2 / 3')
+    expect(wrapper.find('.task-status-card__footer').text()).toContain('已用 1分钟')
   })
 
   it('turns the task card into done state after analysis completion and clears current highlight', async () => {
@@ -341,11 +348,7 @@ describe('ConversationPage acceptance', () => {
     const wrapper = await mountConversationPage(detail)
 
     expect(wrapper.find('.task-status-card').classes()).toContain('is-done')
-    expect(wrapper.find('.task-status-card__title').text()).toBe('分析已完成')
-    expect(wrapper.find('.task-status-card__state').text()).toBe('已完成')
-    expect(wrapper.find('.task-status-card__subtitle').text()).toBe('分析流程已完成，团队已经给出最终结果。')
-    expect(wrapper.findAll('.task-status-timeline__item.is-current')).toHaveLength(0)
-    expect(wrapper.text()).not.toContain('预计剩余')
+    expect(wrapper.find('.task-status-card__footer').text()).toContain('已完成，耗时')
   })
 
   it('uses the updated trader wording for the current task copy', async () => {
@@ -370,8 +373,66 @@ describe('ConversationPage acceptance', () => {
 
     const wrapper = await mountConversationPage(detail)
 
-    expect(wrapper.find('.task-status-card__title').text()).toBe('交易分析师输出交易方案与执行思路')
+    expect(wrapper.find('.task-status-list__label').text()).toBe('交易分析师输出交易方案与执行思路')
     expect(wrapper.text()).not.toContain('交易分析师生成交易方案')
+  })
+
+  it('keeps multiple analyst timeline items active when analyst stages run in parallel', async () => {
+    const detail: ConversationDetail = {
+      ...baseConversation,
+      status: 'analyzing',
+      messages: [
+        createMessage({
+          id: 'task-market',
+          role: 'system',
+          messageType: MessageType.TASK_STATUS,
+          content: { text: '市场阶段', stageId: 'analysts.market' },
+          createdAt: '2026-04-15T08:32:00.000Z',
+        }),
+        createMessage({
+          id: 'task-news',
+          role: 'system',
+          messageType: MessageType.TASK_STATUS,
+          content: { text: '新闻阶段', stageId: 'analysts.news' },
+          createdAt: '2026-04-15T08:33:00.000Z',
+        }),
+        createMessage({
+          id: 'task-fundamentals',
+          role: 'system',
+          messageType: MessageType.TASK_STATUS,
+          content: { text: '基本面阶段', stageId: 'analysts.fundamentals' },
+          createdAt: '2026-04-15T08:34:00.000Z',
+        }),
+      ],
+      taskProgress: {
+        stageId: 'analysts.market',
+        nodeId: 'Market Analyst',
+        stageSnapshot: {
+          'analysts.market': 'in_progress',
+          'analysts.news': 'in_progress',
+          'analysts.fundamentals': 'pending',
+          'decision.finalize': 'pending',
+        },
+        displayState: 'active',
+        elapsedTime: 45,
+        remainingTime: 180,
+      },
+    }
+
+    const wrapper = await mountConversationPage(detail)
+
+    expect(wrapper.findAll('.task-status-card')).toHaveLength(1)
+    expect(wrapper.findAll('.task-status-list__label').map(node => node.text())).toEqual([
+      '市场分析师梳理价格走势与技术信号',
+      '新闻分析师整理近期关键事件与新闻影响',
+      '基本面分析师梳理财务表现、盈利与估值',
+    ])
+    expect(wrapper.findAll('.task-status-list__status').map(node => node.text())).toEqual([
+      '工作中',
+      '工作中',
+      '待完成',
+    ])
+    expect(wrapper.find('.task-status-card__footer').text()).toContain('已完成 0 / 3')
   })
 
   it('keeps lite decision stage copy compatible with the original final decision wording', async () => {
@@ -396,8 +457,8 @@ describe('ConversationPage acceptance', () => {
 
     const wrapper = await mountConversationPage(detail)
 
-    expect(wrapper.find('.task-status-card__title').text()).toBe('投资总监输出最终结论')
-    expect(wrapper.find('.task-status-card__state').text()).toBe('进行中')
+    expect(wrapper.find('.task-status-list__label').text()).toBe('投资总监输出最终投资决策')
+    expect(wrapper.find('.task-status-list__status').text()).toBe('工作中')
   })
 
   it('keeps short insight replies fully visible without a collapse toggle', async () => {
