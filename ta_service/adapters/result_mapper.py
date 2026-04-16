@@ -3,10 +3,14 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+from ta_service.teams import DEFAULT_TEAM_ID, normalize_team_id
+
 LOGGER = logging.getLogger(__name__)
 
 
-def save_report_to_disk(final_state: dict, save_path: Path) -> Path:
+def save_report_to_disk(
+    final_state: dict, save_path: Path, *, team_id: str = DEFAULT_TEAM_ID
+) -> Path:
     """Write each agent node's raw output as individual markdown files under save_path.
 
     Directory layout:
@@ -17,6 +21,7 @@ def save_report_to_disk(final_state: dict, save_path: Path) -> Path:
         5_portfolio/ decision.md
     """
     save_path.mkdir(parents=True, exist_ok=True)
+    normalized_team_id = normalize_team_id(team_id)
 
     # 1. Analyst Team
     analysts_dir = save_path / "1_analysts"
@@ -36,6 +41,16 @@ def save_report_to_disk(final_state: dict, save_path: Path) -> Path:
         (analysts_dir / "fundamentals.md").write_text(
             final_state["fundamentals_report"], encoding="utf-8"
         )
+
+    if normalized_team_id == "lite":
+        if final_state.get("final_trade_decision"):
+            decision_dir = save_path / "2_decision"
+            decision_dir.mkdir(exist_ok=True)
+            (decision_dir / "summary.md").write_text(
+                final_state["final_trade_decision"], encoding="utf-8"
+            )
+        LOGGER.info("report saved to %s", save_path)
+        return save_path
 
     # 2. Research Team
     if final_state.get("investment_debate_state"):

@@ -16,10 +16,14 @@ from ta_service.services.auth_service import AuthService
 from ta_service.services.conversation_service import ConversationService
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.report_context_loader import ReportContextLoader
-from ta_service.services.report_insight_agent import ReportInsightAgent
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.resolution_service import ResolutionService
 from ta_service.services.stock_lookup_gateway import StockLookupGateway
+from ta_service.services.team_report_insight_agent import (
+    FullReportInsightAgent,
+    LiteReportInsightAgent,
+    TeamReportInsightAgent,
+)
 
 security = HTTPBearer(auto_error=False)
 
@@ -111,10 +115,26 @@ def get_report_context_loader(
     return ReportContextLoader(settings=settings)
 
 
-def get_report_insight_agent(
+def get_full_report_insight_agent(
     report_context_loader: ReportContextLoader = Depends(get_report_context_loader),
-) -> ReportInsightAgent:
-    return ReportInsightAgent(report_context_loader=report_context_loader)
+) -> FullReportInsightAgent:
+    return FullReportInsightAgent(report_context_loader=report_context_loader)
+
+
+def get_lite_report_insight_agent(
+    report_context_loader: ReportContextLoader = Depends(get_report_context_loader),
+) -> LiteReportInsightAgent:
+    return LiteReportInsightAgent(report_context_loader=report_context_loader)
+
+
+def get_report_insight_agent(
+    full_reply_agent: FullReportInsightAgent = Depends(get_full_report_insight_agent),
+    lite_reply_agent: LiteReportInsightAgent = Depends(get_lite_report_insight_agent),
+) -> TeamReportInsightAgent:
+    return TeamReportInsightAgent(
+        full_reply_agent=full_reply_agent,
+        lite_reply_agent=lite_reply_agent,
+    )
 
 
 def get_conversation_service(
@@ -124,7 +144,7 @@ def get_conversation_service(
     state_machine: ConversationStateMachine = Depends(get_state_machine),
     settings: Settings = Depends(get_settings_dependency),
     report_context_loader: ReportContextLoader = Depends(get_report_context_loader),
-    report_insight_agent: ReportInsightAgent = Depends(get_report_insight_agent),
+    report_insight_agent: TeamReportInsightAgent = Depends(get_report_insight_agent),
 ) -> ConversationService:
     return ConversationService(
         conversation_repo=conversation_repo,

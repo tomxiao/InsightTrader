@@ -12,6 +12,7 @@ from langchain_core.tools import tool
 from ta_service.models.report_insight import ReportInsightContext, ReportInsightResult
 from ta_service.services.insight_reply_router import InsightReplyRouter
 from ta_service.services.report_context_loader import _SECTION_LABELS, ReportContextLoader
+from ta_service.teams import DEFAULT_TEAM_ID, get_section_labels
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.factory import create_llm_client
 
@@ -196,7 +197,7 @@ class ReportInsightAgent:
             return result
 
     def _run_tool_agent(self, *, context: ReportInsightContext, llm: Any) -> ReportInsightResult:
-        tools = self._build_tools(trace_dir=context.trace_dir)
+        tools = self._build_tools(trace_dir=context.trace_dir, team_id=context.team_id)
         tools_by_name: dict[str, Any] = {t.name: t for t in tools}
         available_section_count = len(context.available_sections)
 
@@ -213,13 +214,14 @@ class ReportInsightAgent:
         gated_section_content = self._load_gated_section_content(
             trace_dir=context.trace_dir,
             section=gated_section,
+            team_id=context.team_id,
         )
         preloaded_sections: dict[str, str] = (
             {gated_section: gated_section_content}
             if gated_section and gated_section_content
             else {}
         )
-        section_menu = _build_section_menu(context.available_sections)
+        section_menu = _build_section_menu(context.available_sections, team_id=context.team_id)
         summary_block = _build_summary_block(context.summary_text)
         preloaded_block = _build_preloaded_section_block(
             section=gated_section,
@@ -348,7 +350,7 @@ class ReportInsightAgent:
     def _run_tool_agent_events(
         self, *, context: ReportInsightContext, llm: Any
     ) -> Iterator[dict[str, Any]]:
-        tools = self._build_tools(trace_dir=context.trace_dir)
+        tools = self._build_tools(trace_dir=context.trace_dir, team_id=context.team_id)
         tools_by_name: dict[str, Any] = {t.name: t for t in tools}
         available_section_count = len(context.available_sections)
 
@@ -374,13 +376,14 @@ class ReportInsightAgent:
         gated_section_content = self._load_gated_section_content(
             trace_dir=context.trace_dir,
             section=gated_section,
+            team_id=context.team_id,
         )
         preloaded_sections: dict[str, str] = (
             {gated_section: gated_section_content}
             if gated_section and gated_section_content
             else {}
         )
-        section_menu = _build_section_menu(context.available_sections)
+        section_menu = _build_section_menu(context.available_sections, team_id=context.team_id)
         summary_block = _build_summary_block(context.summary_text)
         preloaded_block = _build_preloaded_section_block(
             section=gated_section,
@@ -506,10 +509,20 @@ class ReportInsightAgent:
         )
         return result
 
-    def _load_gated_section_content(self, *, trace_dir: str | None, section: str | None) -> str | None:
+    def _load_gated_section_content(
+        self,
+        *,
+        trace_dir: str | None,
+        section: str | None,
+        team_id: str = DEFAULT_TEAM_ID,
+    ) -> str | None:
         if not section:
             return None
-        return self._report_context_loader.load_single_section(trace_dir=trace_dir, section=section)
+        return self._report_context_loader.load_single_section(
+            trace_dir=trace_dir,
+            section=section,
+            team_id=team_id,
+        )
 
     def _answer_with_preloaded_sections(
         self, *, context: ReportInsightContext
@@ -526,7 +539,7 @@ class ReportInsightAgent:
         if context.summary_text and _SUMMARY_SECTION_KEY not in sections:
             sections = {_SUMMARY_SECTION_KEY: context.summary_text, **sections}
 
-        report_text = build_report_prompt_text(sections)
+        report_text = build_report_prompt_text(sections, team_id=context.team_id)
         system_content = (
             f"{_TOOL_SYSTEM_PROMPT}\n\n"
             f"本次分析标的：{context.ticker}，交易日期：{context.trade_date}\n\n"
@@ -576,7 +589,7 @@ class ReportInsightAgent:
         if context.summary_text and _SUMMARY_SECTION_KEY not in sections:
             sections = {_SUMMARY_SECTION_KEY: context.summary_text, **sections}
 
-        report_text = build_report_prompt_text(sections)
+        report_text = build_report_prompt_text(sections, team_id=context.team_id)
         system_content = (
             f"{_TOOL_SYSTEM_PROMPT}\n\n"
             f"本次分析标的：{context.ticker}，交易日期：{context.trade_date}\n\n"
@@ -633,9 +646,10 @@ class ReportInsightAgent:
 
         return _post_process_answer("".join(answer_parts))
 
-    def _build_tools(self, *, trace_dir: str | None) -> list:
+    def _build_tools(self, *, trace_dir: str | None, team_id: str = DEFAULT_TEAM_ID) -> list:
         loader = self._report_context_loader
         _trace_dir = trace_dir
+        _team_id = team_id
 
         @tool
         def read_report_section(section: str) -> dict:
@@ -644,7 +658,11 @@ class ReportInsightAgent:
             decision, trading_plan, fundamentals, market, news, sentiment,
             bull_research, bear_research, research_mgr, risk_aggr, risk_cons, risk_neutral
             """
-            content = loader.load_single_section(trace_dir=_trace_dir, section=section)
+            content = loader.load_single_section(
+                trace_dir=_trace_dir,
+                section=section,
+                team_id=_team_id,
+            )
             if content is None:
                 return {"error": f"章节 '{section}' 不存在或内容为空"}
             logger.info(
@@ -723,13 +741,16 @@ class ReportInsightAgent:
             return None
 
 
-def _build_section_menu(available_sections: list[str]) -> str:
+def _build_section_menu(
+    available_sections: list[str], *, team_id: str = DEFAULT_TEAM_ID
+) -> str:
     """生成传给 LLM 的章节目录文本。"""
     if not available_sections:
         return "（无可用章节）"
+    labels = get_section_labels(team_id)
     lines = []
     for key in available_sections:
-        desc = _SECTION_DESCRIPTIONS.get(key) or _SECTION_LABELS.get(key, key)
+        desc = _SECTION_DESCRIPTIONS.get(key) or labels.get(key) or _SECTION_LABELS.get(key, key)
         lines.append(f"- {key}：{desc}")
     return "\n".join(lines)
 

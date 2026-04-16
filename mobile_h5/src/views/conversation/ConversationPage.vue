@@ -611,7 +611,8 @@ const stageStatusCopyMap: Record<string, string> = {
   'research.debate': '研究团队汇总多方观点并形成研究结论',
   'trader.plan': '交易分析师输出交易方案与执行思路',
   'risk.debate': '风险团队评估下行风险与仓位约束',
-  'portfolio.decision': '投资总监输出最终投资决策'
+  'portfolio.decision': '投资总监输出最终投资决策',
+  'decision.finalize': '投资总监输出最终投资决策'
 }
 
 const nodeStatusCopyMap: Record<string, string> = {
@@ -627,7 +628,8 @@ const nodeStatusCopyMap: Record<string, string> = {
   'Aggressive Analyst': '风险团队评估积极情景',
   'Conservative Analyst': '风险团队评估保守情景',
   'Neutral Analyst': '风险团队评估中性情景',
-  'Portfolio Manager': '投资总监输出最终结论'
+  'Portfolio Manager': '投资总监输出最终结论',
+  'Decision Manager': '投资总监输出最终结论'
 }
 
 const getTaskStatusCopy = (stageId?: string | null, nodeId?: string | null, fallback?: string) => {

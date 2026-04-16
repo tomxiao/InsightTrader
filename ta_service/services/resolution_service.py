@@ -20,10 +20,12 @@ from ta_service.models.resolution import (
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
+from ta_service.runtime.trace_scopes import build_resolution_trace_dir, runtime_trace_scope
 from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.resolution_agent import ResolutionAgent
 from ta_service.services.stock_lookup_gateway import StockLookupError, StockLookupGateway
+from ta_service.teams import DEFAULT_TEAM_ID
 
 logger = logging.getLogger(__name__)
 
@@ -87,15 +89,29 @@ class ResolutionService:
                 terminate=True,
             )
         else:
-            result = self.resolution_agent.resolve(
-                context=ResolutionAgentContext(
-                    currentMessage=current_message,
-                    currentRound=round_number,
-                    priorResolutionSummary=_build_prior_summary(existing_pending),
-                    analysisPrompt=analysis_prompt,
-                    pendingResolution=existing_pending,
-                )
+            resolution_trace_dir = build_resolution_trace_dir(
+                settings=self.analysis_service.settings,
+                conversation_id=conversation_id,
+                resolution_id=resolution_id,
             )
+            with runtime_trace_scope(
+                run_id=f"resolution-{resolution_id[:12]}",
+                trace_dir=str(resolution_trace_dir),
+                conversation_id=conversation_id,
+                resolution_id=resolution_id,
+                trace_kind="resolution",
+                current_stage_id="resolution.resolve",
+                current_node_id="Resolution Agent",
+            ):
+                result = self.resolution_agent.resolve(
+                    context=ResolutionAgentContext(
+                        currentMessage=current_message,
+                        currentRound=round_number,
+                        priorResolutionSummary=_build_prior_summary(existing_pending),
+                        analysisPrompt=analysis_prompt,
+                        pendingResolution=existing_pending,
+                    )
+                )
 
         assistant_message = self.message_repo.create(
             conversation_id=conversation_id,
@@ -150,6 +166,7 @@ class ResolutionService:
                 conversation_id=conversation_id,
                 ticker=ticker,
                 prompt=analysis_prompt,
+                team_id=DEFAULT_TEAM_ID,
             )
             if task_doc:
                 conversation_status = "analyzing"
@@ -250,6 +267,7 @@ class ResolutionService:
             conversation_id=conversation_id,
             ticker=selected_stock.ticker,
             prompt=pending.analysisPrompt,
+            team_id=DEFAULT_TEAM_ID,
         )
         if task_doc:
             conversation_status = "analyzing"
@@ -277,6 +295,7 @@ class ResolutionService:
         conversation_id: str,
         ticker: str,
         prompt: str,
+        team_id: str = DEFAULT_TEAM_ID,
     ) -> dict | None:
         """
         尝试立即启动分析任务，返回任务文档（含进度字段）。
@@ -300,6 +319,7 @@ class ResolutionService:
                 ticker=ticker,
                 trade_date=trade_date,
                 prompt=prompt,
+                team_id=team_id,
             )
             logger.info(
                 "auto_launch_success conversation_id=%s ticker=%s task_id=%s",

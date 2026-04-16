@@ -4,7 +4,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, cast
 
 from ta_service.adapters.result_mapper import (
     extract_executive_summary,
@@ -14,6 +14,7 @@ from ta_service.callbacks.stats_handler import StatsCallbackHandler
 from ta_service.config.settings import Settings
 from ta_service.runtime.run_context import RunContext, build_run_context
 from ta_service.runtime.status_mapper import resolve_stage_message
+from ta_service.teams import DEFAULT_TEAM_ID, get_team_spec, normalize_team_id
 from tradingagents.dataflows.config import clear_runtime_context, set_runtime_context
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
@@ -35,6 +36,7 @@ class RunnerRequest:
     ticker: str
     trade_date: str
     selected_analysts: list[str]
+    team_id: str = DEFAULT_TEAM_ID
     on_stage_change: Callable[[str], None] | None = field(default=None, compare=False, hash=False)
     on_node_change: Callable[[str, str], None] | None = field(
         default=None, compare=False, hash=False
@@ -56,11 +58,15 @@ class TradingAgentsRunner:
 
     def build_runtime_diagnostics(self, payload: RunnerRequest) -> dict:
         config = self._build_config(Path(__file__).resolve())
+        team_spec = get_team_spec(payload.team_id)
         return {
             "request": {
                 "ticker": payload.ticker,
                 "tradeDate": payload.trade_date,
-                "selectedAnalysts": payload.selected_analysts or ANALYST_ORDER,
+                "teamId": normalize_team_id(payload.team_id),
+                "selectedAnalysts": payload.selected_analysts
+                or list(team_spec.default_selected_analysts)
+                or ANALYST_ORDER,
             },
             "effectiveConfig": {
                 "llm_provider": config.get("llm_provider"),
@@ -97,9 +103,10 @@ class TradingAgentsRunner:
         )
         config = self._build_config(run_context.trace_dir)
         LOGGER.info(
-            "starting TradingAgents run run_id=%s ticker=%s provider=%s deep_model=%s quick_model=%s backend_url=%s market_routing=%s",
+            "starting TradingAgents run run_id=%s ticker=%s team_id=%s provider=%s deep_model=%s quick_model=%s backend_url=%s market_routing=%s",
             run_context.run_id,
             payload.ticker,
+            normalize_team_id(payload.team_id),
             config.get("llm_provider"),
             config.get("deep_think_llm"),
             config.get("quick_think_llm"),
@@ -107,11 +114,22 @@ class TradingAgentsRunner:
             config.get("market_routing_enabled"),
         )
         stats_handler = StatsCallbackHandler()
-        graph = TradingAgentsGraph(
-            payload.selected_analysts or ANALYST_ORDER,
-            config=config,
-            debug=True,
-            callbacks=[stats_handler],
+        team_spec = get_team_spec(payload.team_id)
+        graph_factory = team_spec.analysis_orchestrator_factory
+        if graph_factory is None:
+            raise NotImplementedError(
+                f"Analysis team '{team_spec.team_id}' is not yet wired for report generation"
+            )
+        graph = cast(
+            TradingAgentsGraph,
+            graph_factory(
+                payload.selected_analysts
+                or list(team_spec.default_selected_analysts)
+                or ANALYST_ORDER,
+                config=config,
+                debug=True,
+                callbacks=[stats_handler],
+            ),
         )
         if payload.on_node_change is not None:
             graph.node_tracker.on_node_started = payload.on_node_change
@@ -122,6 +140,7 @@ class TradingAgentsRunner:
                 "trace_dir": str(run_context.trace_dir),
                 "ticker": payload.ticker,
                 "trade_date": payload.trade_date,
+                "team_id": team_spec.team_id,
                 "run_started_at_iso": run_context.started_at.isoformat(),
                 "run_dir_name": run_context.trace_dir.name,
             },
@@ -134,12 +153,13 @@ class TradingAgentsRunner:
             trace_dir=str(run_context.trace_dir),
             ticker=payload.ticker,
             trade_date=payload.trade_date,
+            team_id=team_spec.team_id,
             run_started_at_iso=run_context.started_at.isoformat(),
             run_dir_name=run_context.trace_dir.name,
         )
 
         final_state: dict | None = None
-        selected = payload.selected_analysts or ANALYST_ORDER
+        selected = payload.selected_analysts or list(team_spec.default_selected_analysts) or ANALYST_ORDER
         last_stage_id: str | None = None
 
         def _notify_stage_change() -> None:
@@ -153,7 +173,7 @@ class TradingAgentsRunner:
                     except Exception:
                         pass
 
-        stage_tracker.sync(self._build_stage_snapshot(selected, {}))
+        stage_tracker.sync(self._build_stage_snapshot(team_spec.team_id, selected, {}))
         _notify_stage_change()
 
         try:
@@ -163,7 +183,7 @@ class TradingAgentsRunner:
 
             for chunk in graph.graph.stream(init_state, **args):
                 accumulated.update({key: value for key, value in chunk.items() if value})
-                stage_tracker.sync(self._build_stage_snapshot(selected, accumulated))
+                stage_tracker.sync(self._build_stage_snapshot(team_spec.team_id, selected, accumulated))
                 _notify_stage_change()
                 final_state = chunk
 
@@ -173,6 +193,7 @@ class TradingAgentsRunner:
             report_dir = save_report_to_disk(
                 final_state,
                 self.settings.reports_root / run_context.trace_dir.name,
+                team_id=team_spec.team_id,
             )
             return RunnerResult(
                 run_context=run_context,
@@ -196,7 +217,12 @@ class TradingAgentsRunner:
         config["project_dir"] = str(Path(os.getcwd()))
         return config
 
-    def _build_stage_snapshot(self, selected_analysts: list[str], state: dict) -> dict[str, str]:
+    def _build_stage_snapshot(
+        self, team_id: str, selected_analysts: list[str], state: dict
+    ) -> dict[str, str]:
+        if normalize_team_id(team_id) == "lite":
+            return self._build_lite_stage_snapshot(selected_analysts, state)
+
         snapshot: dict[str, str] = {}
         active_set = [item for item in ANALYST_ORDER if item in selected_analysts]
         found_in_progress = False
@@ -236,6 +262,29 @@ class TradingAgentsRunner:
             snapshot["risk.debate"] = "pending"
             snapshot["portfolio.decision"] = "pending"
 
+        return snapshot
+
+    def _build_lite_stage_snapshot(self, selected_analysts: list[str], state: dict) -> dict[str, str]:
+        snapshot: dict[str, str] = {}
+        lite_order = [item for item in ["market", "news", "fundamentals"] if item in selected_analysts]
+        found_in_progress = False
+
+        for analyst_key in lite_order:
+            stage_id, report_key = ANALYST_STAGE_MAP[analyst_key]
+            if state.get(report_key):
+                snapshot[stage_id] = "completed"
+            elif not found_in_progress:
+                snapshot[stage_id] = "in_progress"
+                found_in_progress = True
+            else:
+                snapshot[stage_id] = "pending"
+
+        if lite_order and all(snapshot.get(ANALYST_STAGE_MAP[key][0]) == "completed" for key in lite_order):
+            snapshot["decision.finalize"] = (
+                "completed" if state.get("final_trade_decision") else "in_progress"
+            )
+        else:
+            snapshot["decision.finalize"] = "pending"
         return snapshot
 
 

@@ -162,6 +162,11 @@ const mountConversationPage = async (detail: ConversationDetail) => {
 
 describe('ConversationPage acceptance', () => {
   beforeEach(() => {
+    Object.defineProperty(HTMLElement.prototype, 'scrollTo', {
+      configurable: true,
+      value: vi.fn(),
+    })
+
     setActivePinia(createPinia())
     mockPush.mockReset()
     mockReplace.mockReset()
@@ -369,6 +374,32 @@ describe('ConversationPage acceptance', () => {
     expect(wrapper.text()).not.toContain('交易分析师生成交易方案')
   })
 
+  it('keeps lite decision stage copy compatible with the original final decision wording', async () => {
+    const detail: ConversationDetail = {
+      ...baseConversation,
+      status: 'analyzing',
+      messages: [
+        createMessage({
+          id: 'task-lite-finalize',
+          role: 'system',
+          messageType: MessageType.TASK_STATUS,
+          content: { text: '最终结论阶段', stageId: 'decision.finalize' },
+          createdAt: '2026-04-15T08:33:00.000Z',
+        }),
+      ],
+      taskProgress: {
+        stageId: 'decision.finalize',
+        nodeId: 'Decision Manager',
+        displayState: 'active',
+      } as TaskProgress,
+    }
+
+    const wrapper = await mountConversationPage(detail)
+
+    expect(wrapper.find('.task-status-card__title').text()).toBe('投资总监输出最终结论')
+    expect(wrapper.find('.task-status-card__state').text()).toBe('进行中')
+  })
+
   it('keeps short insight replies fully visible without a collapse toggle', async () => {
     const detail: ConversationDetail = {
       ...baseConversation,
@@ -389,14 +420,14 @@ describe('ConversationPage acceptance', () => {
     expect(wrapper.find('.conversation-bubble__markdown-shell').classes()).not.toContain('is-collapsed')
   })
 
-  it('keeps older long insight replies collapsed while leaving the latest expanded', async () => {
+  it('keeps older long summary cards collapsed while leaving the latest expanded', async () => {
     const detail: ConversationDetail = {
       ...baseConversation,
-      status: 'report_explaining',
+      status: 'report_ready',
       messages: [
         createMessage({
-          id: 'insight-long-old',
-          messageType: MessageType.INSIGHT_REPLY,
+          id: 'summary-long-old',
+          messageType: MessageType.SUMMARY_CARD,
           content: [
             '先看结论：中期趋势还没有彻底走坏，但短线波动会更大。',
             '第一，市场章节提到价格已经接近前高压力位，继续上冲需要更强成交量配合。',
@@ -409,8 +440,8 @@ describe('ConversationPage acceptance', () => {
           createdAt: '2026-04-15T08:33:00.000Z',
         }),
         createMessage({
-          id: 'insight-long-latest',
-          messageType: MessageType.INSIGHT_REPLY,
+          id: 'summary-long-latest',
+          messageType: MessageType.SUMMARY_CARD,
           content: [
             '更直接地说，这份报告暂时不支持立刻加仓。',
             '第一，风险收益比没有明显打开。',
@@ -426,12 +457,18 @@ describe('ConversationPage acceptance', () => {
     }
 
     const wrapper = await mountConversationPage(detail)
-    const shells = wrapper.findAll('.conversation-bubble__markdown-shell')
-    const toggles = wrapper.findAll('.conversation-bubble__toggle')
+    const cards = wrapper.findAll('.conversation-inline-card--summary')
+    const toggles = wrapper.findAll('.conversation-summary__toggle')
 
-    expect(shells).toHaveLength(2)
+    expect(cards).toHaveLength(2)
     expect(toggles).toHaveLength(2)
-    expect(shells[0]?.classes()).toContain('is-collapsed')
-    expect(shells[1]?.classes()).not.toContain('is-collapsed')
+    expect(toggles[0]?.text()).toBe('展开全文')
+    expect(toggles[1]?.text()).toBe('展开全文')
+
+    await toggles[1]!.trigger('click')
+
+    const nextToggles = wrapper.findAll('.conversation-summary__toggle')
+    expect(nextToggles[0]?.text()).toBe('展开全文')
+    expect(nextToggles[1]?.text()).toBe('收起')
   })
 })

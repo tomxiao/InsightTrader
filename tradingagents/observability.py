@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Optional
+from zoneinfo import ZoneInfo
 
 from tradingagents.dataflows.config import get_runtime_context
 
@@ -17,6 +18,7 @@ _RESEARCH_DEBATE_INPUT_DIR = Path("llm_inputs") / "research.debate"
 _TRACE_COUNTERS_LOCK = threading.Lock()
 _TRACE_COUNTERS: Dict[str, Dict[str, int]] = {}
 _SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
+LOCAL_TRACE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 _NODE_STAGE_OVERRIDES = {
     "Bull Researcher": "research.debate",
     "Bear Researcher": "research.debate",
@@ -26,16 +28,17 @@ _NODE_STAGE_OVERRIDES = {
     "Conservative Analyst": "risk.debate",
     "Neutral Analyst": "risk.debate",
     "Portfolio Manager": "portfolio.decision",
+    "Decision Manager": "decision.finalize",
 }
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _local_now_iso() -> str:
+    return datetime.now(timezone.utc).astimezone(LOCAL_TRACE_TIMEZONE).isoformat()
 
 
 def build_trace_event(event: str, **payload: Any) -> Dict[str, Any]:
     trace_event = {
-        "ts": _utc_now_iso(),
+        "ts": _local_now_iso(),
         "schema_version": SCHEMA_VERSION,
         "event": event,
     }
@@ -211,7 +214,7 @@ def persist_research_debate_llm_input(
     output_path = trace_dir / _RESEARCH_DEBATE_INPUT_DIR / filename
     serialized_input = _serialize_llm_input(llm_input)
     payload = {
-        "captured_at": _utc_now_iso(),
+        "captured_at": _local_now_iso(),
         "run_id": merged_runtime_context.get("run_id"),
         "stage_id": stage_id,
         "node_id": node_id,

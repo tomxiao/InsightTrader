@@ -7,6 +7,7 @@ class AnalysisTaskStatusResponse(BaseModel):
     taskId: str
     status: str
     symbol: str | None = None
+    teamId: str | None = None
     currentStep: str | None = None
     message: str | None = None
     elapsedTime: int | None = None
@@ -18,4 +19,5 @@ class CreateAnalysisTaskRequest(BaseModel):
     ticker: str
     tradeDate: str
     prompt: str | None = None
+    teamId: str | None = None
     selectedAnalysts: list[str] | None = None

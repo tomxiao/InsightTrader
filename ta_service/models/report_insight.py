@@ -2,17 +2,24 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from ta_service.teams import DEFAULT_TEAM_ID
+
 
 class ReportInsightContext(BaseModel):
     """传递给 ReportInsightAgent 的输入上下文。"""
 
     conversation_id: str = ""
+    reply_id: str = ""
     question: str
     ticker: str
     trade_date: str
+    team_id: str = DEFAULT_TEAM_ID
 
     trace_dir: str | None = None
     """报告根目录绝对路径，供 Agent 按需调用工具读取章节文件。"""
+
+    reply_trace_dir: str | None = None
+    """本次追问执行自身的 trace 根目录绝对路径。"""
 
     available_sections: list[str] = Field(default_factory=list)
     """当前报告可用的章节名列表，传给 LLM 作为工具调用的候选范围。"""

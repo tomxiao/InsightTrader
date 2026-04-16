@@ -67,7 +67,7 @@ class FakeStateMachine:
 
 
 class FakeReportContextLoader:
-    def list_available_sections(self, *, trace_dir: str) -> list[str]:
+    def list_available_sections(self, *, trace_dir: str, team_id: str | None = None) -> list[str]:
         return ["decision", "risk_cons"]
 
 
@@ -95,7 +95,7 @@ def test_post_message_writes_user_scoped_insight_reply_log(tmp_path: Path) -> No
         "currentTaskId": "task-1",
     }
     task_doc = {
-        "traceDir": str(tmp_path / "results" / "ta_service" / "SNDK_2026_0415_0820"),
+        "traceDir": str(tmp_path / "results" / "analysis" / "SNDK_2026_0415_0820"),
         "symbol": "SNDK",
         "tradeDate": "2026-04-15",
     }
@@ -118,6 +118,7 @@ def test_post_message_writes_user_scoped_insight_reply_log(tmp_path: Path) -> No
         settings=SimpleNamespace(
             analysis_task_ttl_seconds=7200,
             followup_history_turns=6,
+            results_root=tmp_path / "results" / "analysis",
             logs_root=tmp_path / "logs",
             reports_root=tmp_path / "reports",
         ),
@@ -139,6 +140,8 @@ def test_post_message_writes_user_scoped_insight_reply_log(tmp_path: Path) -> No
     record = json.loads(log_path.read_text(encoding="utf-8").strip())
     assert record["conversation_title"] == "SNDK 追问"
     assert record["conversation_id"] == "conv-1"
+    assert record["reply_id"]
+    assert record["reply_trace_dir"].endswith(record["reply_id"])
     assert record["report_dir"].endswith(str(Path("reports") / "SNDK_2026_0415_0820"))
     assert record["user_input"] == "主要风险是什么？"
     assert record["gating"]["intent"] == "risk"
@@ -167,6 +170,7 @@ def test_build_conversation_history_keeps_only_recent_two_rounds(tmp_path: Path)
         settings=SimpleNamespace(
             analysis_task_ttl_seconds=7200,
             followup_history_turns=6,
+            results_root=tmp_path / "results" / "analysis",
             logs_root=tmp_path / "logs",
             reports_root=tmp_path / "reports",
         ),

@@ -14,6 +14,7 @@ class AnalysisJob:
     conversationId: str
     ticker: str
     tradeDate: str
+    teamId: str | None = None
     prompt: str | None = None
     selectedAnalysts: list[str] | None = None
 
@@ -33,6 +34,7 @@ class AnalysisJobQueue:
             conversationId=document["conversationId"],
             ticker=document["symbol"],
             tradeDate=document["tradeDate"],
+            teamId=document.get("teamId"),
             prompt=document.get("prompt"),
             selectedAnalysts=document.get("selectedAnalysts"),
         )

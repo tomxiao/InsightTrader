@@ -16,6 +16,7 @@ from ta_service.repos.messages import MessageRepository
 from ta_service.repos.task_events import TaskEventRepository
 from ta_service.runtime.status_mapper import resolve_node_message, resolve_stage_message
 from ta_service.services.conversation_state_machine import ConversationStateMachine
+from ta_service.teams import get_team_spec, normalize_team_id
 from ta_service.workers.queue import AnalysisJobQueue
 
 LOGGER = logging.getLogger(__name__)
@@ -96,10 +97,12 @@ class AnalysisTaskRunner:
                 payload={"nodeId": node_id, "message": label, "elapsedTime": elapsed},
             )
 
+        team_spec = get_team_spec(job.teamId)
         runner_request = RunnerRequest(
             ticker=job.ticker,
             trade_date=job.tradeDate,
-            selected_analysts=job.selectedAnalysts or ["market", "social", "news", "fundamentals"],
+            selected_analysts=job.selectedAnalysts or list(team_spec.default_selected_analysts),
+            team_id=normalize_team_id(job.teamId),
             on_stage_change=on_stage_change,
             on_node_change=on_node_change,
         )
@@ -142,10 +145,11 @@ class AnalysisTaskRunner:
         try:
             result = self.runner.run_analysis(runner_request)
             trace_dir_str = str(result.run_context.trace_dir)
+            terminal_stage_id = team_spec.stage_contract.stages[-1].stage_id
             self.task_repo.update_status(
                 job.taskId,
                 status="completed",
-                stageId="portfolio.decision",
+                stageId=terminal_stage_id,
                 currentStep="分析已完成",
                 message="分析已完成",
                 elapsedTime=int(time.time() - started_at),
@@ -156,7 +160,7 @@ class AnalysisTaskRunner:
             self.task_event_repo.create(
                 task_id=job.taskId,
                 event_type="task.completed",
-                stage_id="portfolio.decision",
+                stage_id=terminal_stage_id,
                 payload={
                     "runId": result.run_context.run_id,
                     "traceDir": trace_dir_str,

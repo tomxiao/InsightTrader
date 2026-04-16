@@ -14,6 +14,7 @@ from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.services.conversation_state_machine import ConversationStateMachine
+from ta_service.teams import DEFAULT_TEAM_ID, get_team_spec, normalize_team_id
 from ta_service.workers.launcher import spawn_analysis_task_runner
 
 logger = logging.getLogger(__name__)
@@ -99,6 +100,7 @@ class AnalysisService:
             ticker=payload.ticker,
             trade_date=payload.tradeDate,
             prompt=payload.prompt,
+            team_id=payload.teamId,
             selected_analysts=payload.selectedAnalysts,
         )
         return build_analysis_status(task_doc)
@@ -111,6 +113,7 @@ class AnalysisService:
         ticker: str,
         trade_date: str,
         prompt: str | None,
+        team_id: str | None = None,
         selected_analysts: list[str] | None = None,
     ) -> dict:
         """
@@ -118,12 +121,15 @@ class AnalysisService:
         返回任务文档 dict，调用方可从中取进度字段。
         """
         prompt_text = prompt or ""
+        normalized_team_id = normalize_team_id(team_id) or DEFAULT_TEAM_ID
+        get_team_spec(normalized_team_id)
         document = self.task_repo.create(
             user_id=user_id,
             conversation_id=conversation_id,
             ticker=ticker,
             trade_date=trade_date,
             prompt=prompt_text,
+            team_id=normalized_team_id,
             selected_analysts=selected_analysts or [],
         )
 

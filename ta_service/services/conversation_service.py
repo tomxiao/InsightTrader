@@ -6,6 +6,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Iterator
+from uuid import uuid4
 
 from fastapi import HTTPException, status
 
@@ -26,9 +27,11 @@ from ta_service.models.report_insight import ReportInsightContext
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
+from ta_service.runtime.trace_scopes import build_reply_trace_dir, runtime_trace_scope
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.report_context_loader import ReportContextLoader
-from ta_service.services.report_insight_agent import ReportInsightAgent
+from ta_service.services.team_report_insight_agent import TeamReportInsightAgent
+from ta_service.teams import DEFAULT_TEAM_ID, normalize_team_id
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +46,7 @@ class ConversationService:
         state_machine: ConversationStateMachine,
         settings: Settings,
         report_context_loader: ReportContextLoader,
-        report_insight_agent: ReportInsightAgent,
+        report_insight_agent: TeamReportInsightAgent,
     ):
         self.conversation_repo = conversation_repo
         self.message_repo = message_repo
@@ -144,7 +147,8 @@ class ConversationService:
             all_messages=all_messages,
             question=message.strip(),
         )
-        result = self.report_insight_agent.answer(context=insight_context)
+        with self._reply_trace_scope(context=insight_context):
+            result = self.report_insight_agent.answer(context=insight_context)
 
         assistant_message = self.message_repo.create(
             conversation_id=conversation_id,
@@ -226,13 +230,14 @@ class ConversationService:
 
         stream = self.report_insight_agent.answer_events(context=insight_context)
         result = None
-        while True:
-            try:
-                payload = next(stream)
-                yield payload
-            except StopIteration as stop:
-                result = stop.value
-                break
+        with self._reply_trace_scope(context=insight_context):
+            while True:
+                try:
+                    payload = next(stream)
+                    yield payload
+                except StopIteration as stop:
+                    result = stop.value
+                    break
 
         if result is None:
             raise HTTPException(
@@ -289,6 +294,7 @@ class ConversationService:
         available_sections: list[str] = []
         summary_text: str | None = self._get_summary_text(all_messages=all_messages)
         report_sections: dict[str, str] = {}
+        team_id = DEFAULT_TEAM_ID
 
         task_id = conversation.get("currentTaskId")
         if task_id:
@@ -297,9 +303,11 @@ class ConversationService:
                 trace_dir = task_doc.get("traceDir") or None
                 ticker = task_doc.get("symbol") or ""
                 trade_date = task_doc.get("tradeDate") or ""
+                team_id = normalize_team_id(task_doc.get("teamId"))
                 if trace_dir:
                     available_sections = self.report_context_loader.list_available_sections(
-                        trace_dir=trace_dir
+                        trace_dir=trace_dir,
+                        team_id=team_id,
                     )
 
         # 降级：无磁盘报告时使用 SUMMARY_CARD 文本作为单章节上下文
@@ -312,13 +320,24 @@ class ConversationService:
                 )
 
         history = self._build_conversation_history(all_messages=all_messages)
+        reply_id = uuid4().hex
+        reply_trace_dir = str(
+            build_reply_trace_dir(
+                settings=self.settings,
+                conversation_id=conversation.get("id", ""),
+                reply_id=reply_id,
+            )
+        )
 
         return ReportInsightContext(
             conversation_id=conversation.get("id", ""),
+            reply_id=reply_id,
             question=question,
             ticker=ticker,
             trade_date=trade_date,
+            team_id=team_id,
             trace_dir=trace_dir,
+            reply_trace_dir=reply_trace_dir,
             available_sections=available_sections,
             summary_text=summary_text,
             report_sections=report_sections,
@@ -380,10 +399,13 @@ class ConversationService:
                 "username": username,
                 "conversation_title": conversation.get("title") or "",
                 "conversation_id": context.conversation_id,
+                "reply_id": context.reply_id,
                 "ticker": context.ticker,
                 "trade_date": context.trade_date,
+                "team_id": context.team_id,
                 "report_dir": str(report_dir) if report_dir else None,
                 "trace_dir": context.trace_dir,
+                "reply_trace_dir": context.reply_trace_dir,
                 "user_input": question,
                 "gating": {
                     "intent": routing_intent,
@@ -405,6 +427,21 @@ class ConversationService:
                 context.conversation_id,
                 exc,
             )
+
+    def _reply_trace_scope(self, *, context: ReportInsightContext):
+        return runtime_trace_scope(
+            run_id=f"reply-{context.reply_id[:12]}",
+            trace_dir=context.reply_trace_dir or "",
+            conversation_id=context.conversation_id,
+            reply_id=context.reply_id,
+            trace_kind="reply",
+            team_id=context.team_id,
+            ticker=context.ticker,
+            trade_date=context.trade_date,
+            source_trace_dir=context.trace_dir,
+            current_stage_id="reply.answer",
+            current_node_id="Reply Agent",
+        )
 
 
 def _sanitize_username(username: str) -> str:

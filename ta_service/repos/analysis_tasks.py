@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from ta_service.db.mongo import MongoCollections
+from ta_service.teams import DEFAULT_TEAM_ID, get_team_spec, normalize_team_id
 
 
 def _utc_now_iso() -> str:
@@ -22,9 +23,13 @@ class AnalysisTaskRepository:
         ticker: str,
         trade_date: str,
         prompt: str | None = None,
+        team_id: str | None = None,
         selected_analysts: list[str] | None = None,
     ) -> dict:
         now = _utc_now_iso()
+        normalized_team_id = normalize_team_id(team_id)
+        team_spec = get_team_spec(normalized_team_id)
+        default_analysts = list(team_spec.default_selected_analysts)
         document = {
             "taskId": str(uuid4()),
             "userId": user_id,
@@ -32,7 +37,8 @@ class AnalysisTaskRepository:
             "symbol": ticker,
             "tradeDate": trade_date,
             "prompt": prompt,
-            "selectedAnalysts": selected_analysts or ["market", "social", "news", "fundamentals"],
+            "teamId": normalized_team_id or DEFAULT_TEAM_ID,
+            "selectedAnalysts": selected_analysts or default_analysts,
             "status": "queued",
             "stageId": None,
             "nodeId": None,

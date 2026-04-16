@@ -4,39 +4,17 @@ import logging
 from pathlib import Path
 
 from ta_service.config.settings import Settings
+from ta_service.teams import (
+    DEFAULT_TEAM_ID,
+    ReportSectionSpec,
+    get_section_labels,
+    get_section_specs,
+    normalize_team_id,
+)
 
 logger = logging.getLogger(__name__)
 
-# 按重要性排列的章节读取顺序（优先保留靠前的章节）
-_SECTION_FILES: list[tuple[str, str]] = [
-    ("decision", "5_portfolio/decision.md"),
-    ("trading_plan", "3_trading/trader.md"),
-    ("fundamentals", "1_analysts/fundamentals.md"),
-    ("market", "1_analysts/market.md"),
-    ("news", "1_analysts/news.md"),
-    ("sentiment", "1_analysts/sentiment.md"),
-    ("bull_research", "2_research/bull.md"),
-    ("bear_research", "2_research/bear.md"),
-    ("research_mgr", "2_research/manager.md"),
-    ("risk_aggr", "4_risk/aggressive.md"),
-    ("risk_cons", "4_risk/conservative.md"),
-    ("risk_neutral", "4_risk/neutral.md"),
-]
-
-_SECTION_LABELS: dict[str, str] = {
-    "decision": "最终投资决策",
-    "trading_plan": "交易计划",
-    "fundamentals": "基本面分析",
-    "market": "市场与技术分析",
-    "news": "新闻事件分析",
-    "sentiment": "社交情绪分析",
-    "bull_research": "多方研究",
-    "bear_research": "空方研究",
-    "research_mgr": "研究经理结论",
-    "risk_aggr": "激进风险评估",
-    "risk_cons": "保守风险评估",
-    "risk_neutral": "中立风险评估",
-}
+_SECTION_LABELS: dict[str, str] = get_section_labels()
 
 
 class ReportContextLoader:
@@ -45,7 +23,12 @@ class ReportContextLoader:
     def __init__(self, *, settings: Settings):
         self.settings = settings
 
-    def list_available_sections(self, *, trace_dir: str | None) -> list[str]:
+    def list_available_sections(
+        self,
+        *,
+        trace_dir: str | None,
+        team_id: str | None = DEFAULT_TEAM_ID,
+    ) -> list[str]:
         """返回当前报告目录中实际存在的章节名列表。"""
         if not trace_dir:
             return []
@@ -53,12 +36,18 @@ class ReportContextLoader:
         if not report_dir.exists():
             return []
         available = []
-        for section_key, relative_path in _SECTION_FILES:
-            if (report_dir / relative_path).exists():
-                available.append(section_key)
+        for section in self._get_section_specs(team_id):
+            if (report_dir / section.relative_path).exists():
+                available.append(section.key)
         return available
 
-    def load_single_section(self, *, trace_dir: str | None, section: str) -> str | None:
+    def load_single_section(
+        self,
+        *,
+        trace_dir: str | None,
+        section: str,
+        team_id: str | None = DEFAULT_TEAM_ID,
+    ) -> str | None:
         """按需读取单个章节内容，供 ReportInsightAgent 工具调用使用。
 
         Returns:
@@ -66,12 +55,12 @@ class ReportContextLoader:
         """
         if not trace_dir:
             return None
-        relative_path = dict(_SECTION_FILES).get(section)
-        if not relative_path:
+        section_spec = self._get_section_spec(team_id=team_id, section=section)
+        if section_spec is None:
             logger.warning("report_context_loader: unknown section=%s", section)
             return None
         report_dir = self._resolve_report_dir(trace_dir)
-        file_path = report_dir / relative_path
+        file_path = report_dir / section_spec.relative_path
         if not file_path.exists():
             return None
         try:
@@ -86,7 +75,12 @@ class ReportContextLoader:
             )
             return None
 
-    def load(self, *, trace_dir: str | None) -> dict[str, str]:
+    def load(
+        self,
+        *,
+        trace_dir: str | None,
+        team_id: str | None = DEFAULT_TEAM_ID,
+    ) -> dict[str, str]:
         """
         根据 trace_dir 加载报告章节。
 
@@ -110,11 +104,11 @@ class ReportContextLoader:
         total_chars = 0
         char_limit = self.settings.followup_report_context_chars
 
-        for section_key, relative_path in _SECTION_FILES:
+        for section in self._get_section_specs(team_id):
             if total_chars >= char_limit:
                 break
 
-            file_path = report_dir / relative_path
+            file_path = report_dir / section.relative_path
             if not file_path.exists():
                 continue
 
@@ -133,10 +127,10 @@ class ReportContextLoader:
             if len(content) > remaining:
                 content = content[:remaining] + "\n…（内容已截断）"
 
-            sections[section_key] = content
+            sections[section.key] = content
             total_chars += len(content)
             logger.debug(
-                "report_context_loader: loaded section=%s chars=%d", section_key, len(content)
+                "report_context_loader: loaded section=%s chars=%d", section.key, len(content)
             )
 
         logger.info(
@@ -150,21 +144,36 @@ class ReportContextLoader:
     def _resolve_report_dir(self, trace_dir: str) -> Path:
         """将 traceDir 绝对路径转换为对应的报告目录。
 
-        trace_dir 是 results/ta_service/... 的绝对路径，报告文件写入的是
+        trace_dir 是 results/analysis/... 的绝对路径，报告文件写入的是
         reports_root / trace_dir.name，因此取最后一级目录名拼接。
         """
         trace_path = Path(trace_dir)
         return self.settings.reports_root / trace_path.name
 
+    def _get_section_specs(self, team_id: str | None) -> tuple[ReportSectionSpec, ...]:
+        return get_section_specs(team_id)
 
-def build_report_prompt_text(sections: dict[str, str]) -> str:
+    def _get_section_spec(
+        self, *, team_id: str | None, section: str
+    ) -> ReportSectionSpec | None:
+        normalized = normalize_team_id(team_id)
+        for item in self._get_section_specs(normalized):
+            if item.key == section:
+                return item
+        return None
+
+
+def build_report_prompt_text(
+    sections: dict[str, str], *, team_id: str | None = DEFAULT_TEAM_ID
+) -> str:
     """将章节字典拼接为 prompt 中使用的结构化文本块。"""
     if not sections:
         return ""
 
     parts: list[str] = []
+    labels = get_section_labels(team_id)
     for key, content in sections.items():
-        label = _SECTION_LABELS.get(key, key)
+        label = labels.get(key, key)
         parts.append(f"[{label}]\n{content}")
 
     return "\n\n".join(parts)

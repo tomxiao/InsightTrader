@@ -23,6 +23,7 @@ STAGE_LABELS = {
     "trader.plan": "交易分析师生成交易方案与执行思路",
     "risk.debate": "风险团队评估下行风险与仓位约束",
     "portfolio.decision": "投资总监输出最终投资决策",
+    "decision.finalize": "轻量团队输出最终投资结论",
 }
 
 NODE_LABELS = {
@@ -39,6 +40,7 @@ NODE_LABELS = {
     "Conservative Analyst": "风险团队评估保守情景",
     "Neutral Analyst": "风险团队评估中性情景",
     "Portfolio Manager": "投资总监输出最终结论",
+    "Decision Manager": "轻量团队汇总分析并输出结论",
 }
 
 
@@ -134,6 +136,7 @@ def build_task_status_response(document: dict) -> AnalysisTaskStatusResponse:
         taskId=document["taskId"],
         status=normalize_mobile_status(document["status"]),
         symbol=document.get("symbol"),
+        teamId=document.get("teamId"),
         currentStep=document.get("currentStep") or resolve_stage_message(document.get("stageId")),
         message=document.get("message") or resolve_stage_message(document.get("stageId")),
         elapsedTime=elapsed_time,
