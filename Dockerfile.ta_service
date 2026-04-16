@@ -14,13 +14,16 @@ WORKDIR /build
 # 先复制锁文件和依赖描述，让依赖层只受 pyproject.toml / uv.lock 影响
 COPY pyproject.toml uv.lock README.md ./
 
+# 先只安装锁定依赖，不安装当前项目本身，避免代码变更打掉依赖层缓存
+RUN uv sync --frozen --no-dev --no-editable --no-install-project
+
 # 再复制运行时需要的源码与版本文件
 COPY ta_service ./ta_service
 COPY tradingagents ./tradingagents
 COPY cli ./cli
 COPY deploy/VERSION ./deploy/VERSION
 
-# 使用 uv.lock 冻结依赖安装；非 editable 安装，避免运行时依赖源码路径
+# 最后安装当前项目；此层只会在源码或版本文件变化时失效
 RUN uv sync --frozen --no-dev --no-editable
 
 # ── Stage 2: 运行时镜像 ────────────────────────────────────────────────────────

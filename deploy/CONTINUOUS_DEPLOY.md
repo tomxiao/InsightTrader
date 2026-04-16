@@ -62,10 +62,10 @@ ssh -i $PEM root@93901.pro "cd /opt/insighttrader && docker compose -f docker-co
 ssh -i $PEM root@93901.pro "curl -s http://127.0.0.1:8100/health"
 ```
 
-期望输出：`{"status":"ok"}`
+期望输出：返回 `status=ok`，并带上 `version`、`mongo`、`redis`、`writable_dirs` 检查结果。
 
 > **说明**
-> - 后端镜像现在基于 `pyproject.toml + uv.lock` 构建依赖层，使用 `uv sync --frozen --no-dev --no-editable` 安装。
+> - 后端镜像现在分两层安装：先基于 `pyproject.toml + uv.lock` 执行 `uv sync --frozen --no-dev --no-editable --no-install-project` 安装锁定依赖，再在复制源码后执行 `uv sync --frozen --no-dev --no-editable` 安装当前项目。
 > - 只改 Python 逻辑（无依赖变化）时，依赖层通常会命中缓存，不应再每次重新下载整套依赖；`build` 通常约 **1~3 分钟**。
 > - 只有 `pyproject.toml` 或 `uv.lock` 变化时，依赖层才会重新安装，约 **5~10 分钟**。
 > - 如果修改了依赖，提交前必须同步更新 `uv.lock`，否则生产构建会因 `--frozen` 失败。
@@ -117,7 +117,7 @@ python deploy/upload_dist.py
 ssh -i $PEM root@93901.pro "curl -s http://127.0.0.1:8100/health && curl -sk -o /dev/null -w 'Nginx HTTPS %{http_code}' https://127.0.0.1/"
 ```
 
-期望输出：`{"status":"ok"}` + `Nginx HTTPS 200`
+期望输出：`health.status=ok` + `Nginx HTTPS 200`
 
 ---
 
