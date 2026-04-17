@@ -28,6 +28,13 @@ export type StreamMessageEvent =
   | { event: 'completed'; assistantMessage: ConversationMessage }
   | { event: 'error'; message: string; status_code?: number }
 
+export type StreamResolutionEvent =
+  | { event: 'started'; userMessage: ConversationMessage }
+  | { event: 'progress'; message: string }
+  | { event: 'delta'; text: string }
+  | { event: 'completed'; response: ResolutionResponse }
+  | { event: 'error'; message: string; status_code?: number }
+
 type StreamHandlers = {
   onEvent: (event: StreamMessageEvent) => void
 }
@@ -89,7 +96,55 @@ export const conversationsApi = {
       while (boundary >= 0) {
         const rawEvent = buffer.slice(0, boundary)
         buffer = buffer.slice(boundary + 2)
-        const parsed = parseSseEvent(rawEvent)
+        const parsed = parseSseEvent<StreamMessageEvent>(rawEvent)
+        if (parsed) {
+          handlers.onEvent(parsed)
+        }
+        boundary = buffer.indexOf('\n\n')
+      }
+    }
+  },
+  async streamResolve(
+    conversationId: string,
+    payload: ResolutionRequest,
+    handlers: { onEvent: (event: StreamResolutionEvent) => void }
+  ) {
+    const authStore = useAuthStore()
+    const response = await fetch(`${env.apiBaseUrl}/conversations/${conversationId}/resolution/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}),
+      },
+      body: JSON.stringify(payload),
+    })
+
+    if (!response.ok || !response.body) {
+      let message = '流式识别失败，请稍后再试'
+      try {
+        const data = await response.json()
+        if (typeof data?.detail === 'string') {
+          message = data.detail
+        }
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(message)
+    }
+
+    const reader = response.body.getReader()
+    const decoder = new TextDecoder('utf-8')
+    let buffer = ''
+
+    while (true) {
+      const { value, done } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let boundary = buffer.indexOf('\n\n')
+      while (boundary >= 0) {
+        const rawEvent = buffer.slice(0, boundary)
+        buffer = buffer.slice(boundary + 2)
+        const parsed = parseSseEvent<StreamResolutionEvent>(rawEvent)
         if (parsed) {
           handlers.onEvent(parsed)
         }
@@ -116,7 +171,7 @@ export const conversationsApi = {
   }
 }
 
-function parseSseEvent(rawEvent: string): StreamMessageEvent | null {
+function parseSseEvent<T extends { event: string }>(rawEvent: string): T | null {
   const lines = rawEvent.split('\n')
   let event = 'message'
   const dataLines: string[] = []
@@ -133,7 +188,7 @@ function parseSseEvent(rawEvent: string): StreamMessageEvent | null {
 
   if (!dataLines.length) return null
   try {
-    return { event, ...JSON.parse(dataLines.join('\n')) } as StreamMessageEvent
+    return { event, ...JSON.parse(dataLines.join('\n')) } as T
   } catch {
     return null
   }

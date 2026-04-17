@@ -1,11 +1,12 @@
 import copy
+import threading
 from typing import Any, Dict, Optional
 
 import tradingagents.default_config as default_config
 
 # Use default config but allow it to be overridden
 _config: Optional[Dict] = None
-_runtime_context: Dict[str, Any] = {}
+_runtime_context_local = threading.local()
 
 
 def _deep_merge(base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
@@ -27,14 +28,16 @@ def initialize_config():
 
 def set_config(config: Dict):
     """Update the configuration with custom values."""
-    global _config
-    if _config is None:
-        _config = copy.deepcopy(default_config.DEFAULT_CONFIG)
-    _config = _deep_merge(_config, config)
+    merged = _deep_merge(default_config.DEFAULT_CONFIG, config)
+    _config = copy.deepcopy(merged)
+    _runtime_context_local.config = copy.deepcopy(merged)
 
 
 def get_config() -> Dict:
     """Get the current configuration."""
+    thread_config = getattr(_runtime_context_local, "config", None)
+    if thread_config is not None:
+        return copy.deepcopy(thread_config)
     if _config is None:
         initialize_config()
     return copy.deepcopy(_config or {})
@@ -42,19 +45,19 @@ def get_config() -> Dict:
 
 def set_runtime_context(**kwargs):
     """Set runtime-only context used by data routing."""
-    global _runtime_context
-    _runtime_context.update(kwargs)
+    current_local = getattr(_runtime_context_local, "value", {}).copy()
+    current_local.update(kwargs)
+    _runtime_context_local.value = current_local
 
 
 def clear_runtime_context():
     """Clear runtime-only context used by data routing."""
-    global _runtime_context
-    _runtime_context = {}
+    _runtime_context_local.value = {}
 
 
 def get_runtime_context() -> Dict[str, Any]:
     """Get runtime-only routing context."""
-    return copy.deepcopy(_runtime_context)
+    return copy.deepcopy(getattr(_runtime_context_local, "value", {}))
 
 
 # Initialize with default config

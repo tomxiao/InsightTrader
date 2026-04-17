@@ -10,6 +10,7 @@
 export const MessageType = {
   TEXT: 'text',
   TICKER_RESOLUTION: 'ticker_resolution',
+  RESOLUTION_STREAM: 'resolution_stream',
   TASK_STATUS: 'task_status',
   SUMMARY_CARD: 'summary_card',
   INSIGHT_REPLY: 'insight_reply',
@@ -70,6 +71,9 @@ export interface TickerResolutionContent {
   focusPoints?: string[]
 }
 
+/** RESOLUTION_STREAM: 标的识别过程中的临时流式回复 */
+export type ResolutionStreamContent = string
+
 // ─── 类型守卫 ────────────────────────────────────────────────────────────────
 
 export function isTextContent(
@@ -124,4 +128,11 @@ export function isTickerResolutionContent(
     typeof content === 'object' &&
     content !== null
   )
+}
+
+export function isResolutionStreamContent(
+  type: MessageType,
+  content: unknown,
+): content is ResolutionStreamContent {
+  return type === MessageType.RESOLUTION_STREAM && typeof content === 'string'
 }

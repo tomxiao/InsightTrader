@@ -1,5 +1,6 @@
 import type {
   MessageType,
+  ResolutionStreamContent,
   TaskStatusContent,
   ErrorContent,
   SummaryCardContent,
@@ -58,6 +59,7 @@ export interface ConversationMessage {
     | ErrorContent
     | SummaryCardContent
     | TickerResolutionContent
+    | ResolutionStreamContent
   createdAt: string
 }
 

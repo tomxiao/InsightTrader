@@ -17,6 +17,7 @@ LLM_TRACE_FILENAME = "llm_events.jsonl"
 _RESEARCH_DEBATE_INPUT_DIR = Path("llm_inputs") / "research.debate"
 _TRACE_COUNTERS_LOCK = threading.Lock()
 _TRACE_COUNTERS: Dict[str, Dict[str, int]] = {}
+_TRACE_FILE_LOCKS: Dict[str, threading.Lock] = {}
 _SANITIZE_PATTERN = re.compile(r"[^A-Za-z0-9._-]+")
 LOCAL_TRACE_TIMEZONE = ZoneInfo("Asia/Shanghai")
 _NODE_STAGE_OVERRIDES = {
@@ -66,8 +67,12 @@ def _resolve_trace_dir(
 
 def _append_jsonl(path: Path, event: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
+    path_key = str(path.resolve())
+    with _TRACE_COUNTERS_LOCK:
+        file_lock = _TRACE_FILE_LOCKS.setdefault(path_key, threading.Lock())
+    with file_lock:
+        with path.open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(event, ensure_ascii=False, default=str) + "\n")
 
 
 def _merge_runtime_context(runtime_context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -316,8 +321,8 @@ class StageEventTracker:
         self.check_interval_s = check_interval_s
         self.stage_status: Dict[str, str] = {}
         self.last_progress_at = time.monotonic()
-        self.current_stage_id: Optional[str] = None
-        self._stalled_stage_id: Optional[str] = None
+        self.current_stage_ids: set[str] = set()
+        self._stalled_stage_ids: set[str] = set()
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._watchdog_thread: Optional[threading.Thread] = None
@@ -362,7 +367,7 @@ class StageEventTracker:
             snapshot_changed = stage_snapshot != previous_snapshot
             if snapshot_changed:
                 self.last_progress_at = now
-                self._stalled_stage_id = None
+                self._stalled_stage_ids.clear()
 
             for stage_id, status in stage_snapshot.items():
                 previous_status = previous_snapshot.get(stage_id, "pending")
@@ -386,45 +391,42 @@ class StageEventTracker:
                     self._emit("stage.completed", **payload)
 
             self.stage_status = dict(stage_snapshot)
-            self.current_stage_id = next(
-                (
-                    stage_id
-                    for stage_id, status in stage_snapshot.items()
-                    if status == "in_progress"
-                ),
-                None,
-            )
+            self.current_stage_ids = {
+                stage_id for stage_id, status in stage_snapshot.items() if status == "in_progress"
+            }
 
     def mark_failed(self, error: Exception) -> None:
         with self._lock:
-            stage_id = self.current_stage_id
-        if not stage_id:
+            stage_ids = list(self.current_stage_ids)
+        if not stage_ids:
             return
 
-        self._emit(
-            "stage.failed",
-            stage_id=stage_id,
-            status="failed",
-            error_code=error.__class__.__name__,
-            error_message=str(error),
-        )
+        for stage_id in stage_ids:
+            self._emit(
+                "stage.failed",
+                stage_id=stage_id,
+                status="failed",
+                error_code=error.__class__.__name__,
+                error_message=str(error),
+            )
 
     def _watchdog_loop(self) -> None:
         while not self._stop_event.wait(self.check_interval_s):
+            stalled_stage_ids: list[str] = []
             with self._lock:
-                if not self.current_stage_id:
-                    continue
-                if self._stalled_stage_id == self.current_stage_id:
-                    continue
-                if self.stage_status.get(self.current_stage_id) != "in_progress":
-                    continue
                 if time.monotonic() - self.last_progress_at < self.stall_threshold_s:
                     continue
-
-                self._stalled_stage_id = self.current_stage_id
+                for stage_id in self.current_stage_ids:
+                    if stage_id in self._stalled_stage_ids:
+                        continue
+                    if self.stage_status.get(stage_id) != "in_progress":
+                        continue
+                    self._stalled_stage_ids.add(stage_id)
+                    stalled_stage_ids.append(stage_id)
+            for stage_id in stalled_stage_ids:
                 self._emit(
                     "stage.stalled",
-                    stage_id=self.current_stage_id,
+                    stage_id=stage_id,
                     status="in_progress",
                     stalled_for_seconds=self.stall_threshold_s,
                 )
@@ -448,8 +450,8 @@ class NodeEventTracker:
         self.check_interval_s = check_interval_s
         self.on_node_started = on_node_started
         self.last_progress_at = time.monotonic()
-        self.current_node: Optional[Dict[str, Any]] = None
-        self._stalled_node_id: Optional[str] = None
+        self.active_nodes: Dict[int, Dict[str, Any]] = {}
+        self._stalled_node_ids: set[str] = set()
         self._lock = threading.Lock()
         self._stop_event = threading.Event()
         self._watchdog_thread: Optional[threading.Thread] = None
@@ -490,6 +492,7 @@ class NodeEventTracker:
 
     def mark_started(self, *, node_id: str, stage_id: str, node_kind: str) -> None:
         now = time.monotonic()
+        thread_id = threading.get_ident()
         payload = {
             "node_id": node_id,
             "stage_id": stage_id,
@@ -497,10 +500,12 @@ class NodeEventTracker:
             "status": "in_progress",
         }
         with self._lock:
-            self.current_node = dict(payload)
-            self.current_node["started_at_monotonic"] = now
+            node_info = dict(payload)
+            node_info["started_at_monotonic"] = now
+            node_info["thread_id"] = thread_id
+            self.active_nodes[thread_id] = node_info
             self.last_progress_at = now
-            self._stalled_node_id = None
+            self._stalled_node_ids.discard(node_id)
         self._emit("node.started", **payload)
         if node_kind == "agent" and self.on_node_started is not None:
             try:
@@ -510,32 +515,38 @@ class NodeEventTracker:
 
     def mark_completed(self) -> None:
         now = time.monotonic()
+        thread_id = threading.get_ident()
         with self._lock:
-            node_info = dict(self.current_node) if self.current_node else None
-            self.current_node = None
+            node_info = dict(self.active_nodes.pop(thread_id)) if thread_id in self.active_nodes else None
             self.last_progress_at = now
-            self._stalled_node_id = None
 
         if not node_info:
             return
 
         started_at = node_info.pop("started_at_monotonic", now)
+        node_id = node_info.get("node_id")
+        if node_id:
+            self._stalled_node_ids.discard(node_id)
+        node_info.pop("thread_id", None)
         node_info["status"] = "completed"
         node_info["duration_ms"] = int((now - started_at) * 1000)
         self._emit("node.completed", **node_info)
 
     def mark_failed(self, error: Exception) -> None:
         now = time.monotonic()
+        thread_id = threading.get_ident()
         with self._lock:
-            node_info = dict(self.current_node) if self.current_node else None
-            self.current_node = None
+            node_info = dict(self.active_nodes.pop(thread_id)) if thread_id in self.active_nodes else None
             self.last_progress_at = now
-            self._stalled_node_id = None
 
         if not node_info:
             return
 
         started_at = node_info.pop("started_at_monotonic", now)
+        node_id = node_info.get("node_id")
+        if node_id:
+            self._stalled_node_ids.discard(node_id)
+        node_info.pop("thread_id", None)
         node_info["status"] = "failed"
         node_info["duration_ms"] = int((now - started_at) * 1000)
         node_info["error_code"] = error.__class__.__name__
@@ -544,23 +555,27 @@ class NodeEventTracker:
 
     def _watchdog_loop(self) -> None:
         while not self._stop_event.wait(self.check_interval_s):
+            stalled_payloads: list[Dict[str, Any]] = []
             with self._lock:
-                if not self.current_node:
-                    continue
-                node_id = self.current_node["node_id"]
-                if self._stalled_node_id == node_id:
-                    continue
-                running_for_s = time.monotonic() - self.current_node["started_at_monotonic"]
-                if running_for_s < self.stall_threshold_s:
-                    continue
+                now = time.monotonic()
+                for node_info in self.active_nodes.values():
+                    node_id = node_info["node_id"]
+                    if node_id in self._stalled_node_ids:
+                        continue
+                    running_for_s = now - node_info["started_at_monotonic"]
+                    if running_for_s < self.stall_threshold_s:
+                        continue
 
-                self._stalled_node_id = node_id
-                payload = {
-                    "node_id": node_id,
-                    "stage_id": self.current_node["stage_id"],
-                    "node_kind": self.current_node["node_kind"],
-                    "status": "in_progress",
-                    "stalled_for_seconds": self.stall_threshold_s,
-                    "running_for_seconds": round(running_for_s, 3),
-                }
-            self._emit("node.stalled", **payload)
+                    self._stalled_node_ids.add(node_id)
+                    stalled_payloads.append(
+                        {
+                            "node_id": node_id,
+                            "stage_id": node_info["stage_id"],
+                            "node_kind": node_info["node_kind"],
+                            "status": "in_progress",
+                            "stalled_for_seconds": self.stall_threshold_s,
+                            "running_for_seconds": round(running_for_s, 3),
+                        }
+                    )
+            for payload in stalled_payloads:
+                self._emit("node.stalled", **payload)

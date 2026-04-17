@@ -8,7 +8,7 @@ import { showToast } from 'vant'
 
 import { authApi } from '@api/auth'
 import { conversationsApi } from '@api/conversations'
-import type { StreamMessageEvent } from '@api/conversations'
+import type { StreamMessageEvent, StreamResolutionEvent } from '@api/conversations'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
 import { useConversationPolling } from '@composables/useConversationPolling'
 import { useDrawerPolling } from '@composables/useDrawerPolling'
@@ -17,6 +17,7 @@ import { useConversationStore } from '@stores/conversation'
 import type { ConversationMessage, ConversationSummary, TaskProgressItem } from '@/types/conversation'
 import {
   MessageType,
+  isResolutionStreamContent,
   isTaskStatusContent,
   isTickerResolutionContent,
 } from '@/types/messageTypes'
@@ -180,7 +181,7 @@ const groupedConversations = computed(() => {
 
 const suggestedPrompts = [
   '分析宁德时代',
-  '研究腾讯控股最新趋势',
+  '研究腾讯控股',
   '帮我看下Apple'
 ]
 
@@ -327,8 +328,15 @@ const canInteractWithResolution = (message: ConversationMessage) => {
   return resolutionId === activeResolutionId.value && !isAnalyzing.value
 }
 
-const applyResolutionResponse = async (response: ResolutionResponse) => {
-  conversationStore.appendMessages(response.messages)
+const applyResolutionResponse = async (
+  response: ResolutionResponse,
+  options?: { skipUserMessage?: boolean }
+) => {
+  const nextMessages =
+    options?.skipUserMessage
+      ? response.messages.filter(message => message.role !== 'user')
+      : response.messages
+  conversationStore.appendMessages(nextMessages)
   // 重新加载会话以获取最新状态，taskProgress 由后端填充在 ConversationDetail 中
   await loadConversation(currentConversation.value.id)
   if (response.conversationStatus === 'ready_to_analyze') {
@@ -402,6 +410,71 @@ const handleStreamEvent = ({
     conversationStore.removeMessageById(streamingAssistantId)
     throw new Error(event.message || '流式回复失败，请稍后再试')
   }
+}
+
+const handleResolutionStreamEvent = ({
+  event,
+  optimisticId,
+  thinkingId,
+  streamingAssistantId,
+}: {
+  event: StreamResolutionEvent
+  optimisticId: string
+  thinkingId: string
+  streamingAssistantId: string
+}): ResolutionResponse | null => {
+  if (event.event === 'started') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(optimisticId)
+    conversationStore.upsertMessage(event.userMessage)
+    conversationStore.upsertMessage({
+      id: thinkingId,
+      role: 'system',
+      messageType: MessageType.TEXT,
+      content: '正在识别标的，请稍候…',
+      createdAt: new Date().toISOString(),
+    })
+    return null
+  }
+
+  if (event.event === 'progress') {
+    conversationStore.upsertMessage({
+      id: thinkingId,
+      role: 'system',
+      messageType: MessageType.TEXT,
+      content: event.message || '正在识别标的，请稍候…',
+      createdAt: new Date().toISOString(),
+    })
+    return null
+  }
+
+  if (event.event === 'delta') {
+    conversationStore.removeMessageById(thinkingId)
+    const existing = currentMessages.value.find(item => item.id === streamingAssistantId)
+    const currentText = existing ? getMessageText(existing) : ''
+    conversationStore.upsertMessage({
+      id: streamingAssistantId,
+      role: 'assistant',
+      messageType: MessageType.RESOLUTION_STREAM,
+      content: `${currentText}${event.text}`,
+      createdAt: new Date().toISOString(),
+    })
+    return null
+  }
+
+  if (event.event === 'completed') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(streamingAssistantId)
+    return event.response
+  }
+
+  if (event.event === 'error') {
+    conversationStore.removeMessageById(thinkingId)
+    conversationStore.removeMessageById(streamingAssistantId)
+    throw new Error(event.message || '流式识别失败，请稍后再试')
+  }
+
+  return null
 }
 
 const submitResolutionAction = async (action: ResolutionAction, resolutionId: string, ticker?: string) => {
@@ -498,10 +571,25 @@ const submitPrompt = async () => {
       return
     }
 
-    const response = await conversationsApi.resolve(currentConversation.value.id, { message: text })
+    let resolutionResponse: ResolutionResponse | null = null
+    await conversationsApi.streamResolve(currentConversation.value.id, { message: text }, {
+      onEvent: (event: StreamResolutionEvent) => {
+        const nextResponse = handleResolutionStreamEvent({
+          event,
+          optimisticId,
+          thinkingId,
+          streamingAssistantId,
+        })
+        if (nextResponse) resolutionResponse = nextResponse
+      }
+    })
+    if (!resolutionResponse) {
+      throw new Error('未收到标的识别结果')
+    }
     conversationStore.removeMessageById(optimisticId)
     conversationStore.removeMessageById(thinkingId)
-    await applyResolutionResponse(response)
+    conversationStore.removeMessageById(streamingAssistantId)
+    await applyResolutionResponse(resolutionResponse, { skipUserMessage: true })
   } catch (error) {
     conversationStore.removeMessageById(optimisticId)
     conversationStore.removeMessageById(thinkingId)
@@ -906,7 +994,7 @@ const getSummaryPreview = (text: string) => {
   return first.trim()
 }
 
-const INSIGHT_GUIDE_CHIPS = ['主要风险是什么？', '适合什么类型的投资者？', '短期和中长期如何看？', '核心催化剂有哪些？']
+const INSIGHT_GUIDE_CHIPS = ['可以买吗？', '要不要卖？', '能不能持有？', '主要风险是什么？']
 
 const isLatestSummaryCard = (messageId: string): boolean => {
   const summaryMessages = currentMessages.value.filter(
@@ -1160,14 +1248,16 @@ onUnmounted(() => {
                       : getSummaryPreview(getMessageText(message))
                   )"
                 />
-                <button
-                  class="conversation-summary__toggle"
-                  type="button"
-                  :data-expanded="isSummaryExpanded(message.id) ? '' : undefined"
-                  @click="toggleSummary(message.id)"
-                >
-                  {{ isSummaryExpanded(message.id) ? '收起' : '展开全文' }}
-                </button>
+                <div class="conversation-summary__actions">
+                  <button
+                    class="conversation-summary__toggle"
+                    type="button"
+                    :data-expanded="isSummaryExpanded(message.id) ? '' : undefined"
+                    @click="toggleSummary(message.id)"
+                  >
+                    {{ isSummaryExpanded(message.id) ? '收起' : '展开全文' }}
+                  </button>
+                </div>
 
                 <div
                   v-if="isLatestSummaryCard(message.id)"
@@ -1316,6 +1406,16 @@ onUnmounted(() => {
                     v-html="renderMarkdown(getMessageText(message))"
                   />
                 </div>
+              </div>
+            </template>
+
+            <template v-else-if="message.messageType === MessageType.RESOLUTION_STREAM">
+              <div class="conversation-bubble conversation-bubble--resolution-stream">
+                <div class="conversation-message-meta">
+                  <span>{{ getSpeakerLabel(message) }}</span>
+                  <span>{{ formatTimeLabel(message.createdAt) }}</span>
+                </div>
+                <p>{{ isResolutionStreamContent(message.messageType, message.content) ? message.content : getMessageText(message) }}</p>
               </div>
             </template>
 
@@ -1978,11 +2078,10 @@ onUnmounted(() => {
 }
 
 .conversation-summary__toggle {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: flex-start;
-  width: fit-content;
-  margin-top: 10px;
+  justify-content: flex-end;
+  flex-shrink: 0;
   padding: 0;
   background: none;
   border: none;
@@ -2007,6 +2106,12 @@ onUnmounted(() => {
   }
 }
 
+.conversation-summary__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 10px;
+}
+
 .conversation-summary__guide {
   margin-top: 14px;
   padding-top: 10px;
@@ -2021,27 +2126,34 @@ onUnmounted(() => {
 }
 
 .conversation-summary__guide-chips {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
 }
 
 .conversation-summary__guide-chip {
   display: inline-flex;
   align-items: center;
-  padding: 5px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 16px;
+  justify-content: center;
+  min-height: 34px;
+  width: 100%;
+  padding: 0 10px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 999px;
   font-size: 12px;
+  font-weight: 500;
   color: var(--mobile-color-text-secondary);
+  line-height: 1.15;
+  text-align: center;
   cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, transform 0.15s;
 
   &:active {
     background: rgba(93, 139, 255, 0.12);
     border-color: var(--van-primary-color, #1989fa);
     color: var(--van-primary-color, #1989fa);
+    transform: scale(0.98);
   }
 }
 

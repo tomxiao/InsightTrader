@@ -375,19 +375,6 @@ def route_to_vendor(method: str, *args, **kwargs):
 
     market_vendor, market = _resolve_market_vendor(method, args, kwargs)
     route_context = _build_route_context(method, market_vendor, market, args, kwargs)
-    if market_vendor is None and market is not None:
-        _emit_route_event(
-            "route.blocked",
-            **route_context,
-            routing_mode="market_tool_vendors",
-            vendor_chain=[],
-            outcome="blocked",
-            reason="no_best_vendor",
-        )
-        return unsupported_response(
-            "routing", method, market, "No best vendor is configured for this market and tool."
-        )
-
     if market_vendor:
         vendor_chain = [market_vendor]
         routing_mode = "market_tool_vendors"

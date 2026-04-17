@@ -10,10 +10,10 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.agents import (
     create_decision_manager,
-    create_fundamentals_analyst,
+    create_fundamentals_analyst_fast,
     create_market_analyst_fast,
     create_msg_delete,
-    create_news_analyst,
+    create_news_analyst_fast,
 )
 from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import (
@@ -26,7 +26,12 @@ from tradingagents.agents.utils.agent_utils import (
     get_news,
     get_stock_data,
 )
-from tradingagents.dataflows.config import get_runtime_context, set_config, set_runtime_context
+from tradingagents.dataflows.config import (
+    clear_runtime_context,
+    get_runtime_context,
+    set_config,
+    set_runtime_context,
+)
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.conditional_logic import ConditionalLogic
 from tradingagents.graph.propagation import Propagator
@@ -132,7 +137,12 @@ class LiteTradingGraph:
 
         def instrumented_node(*args, **kwargs):
             previous_context = get_runtime_context()
+            base_context = dict(self.node_tracker.runtime_context)
             self.node_tracker.mark_started(node_id=node_name, stage_id=stage_id, node_kind=node_kind)
+            set_config(self.config)
+            clear_runtime_context()
+            if base_context:
+                set_runtime_context(**base_context)
             set_runtime_context(
                 current_stage_id=stage_id,
                 current_node_id=node_name,
@@ -147,11 +157,9 @@ class LiteTradingGraph:
                 self.node_tracker.mark_completed()
                 return result
             finally:
-                set_runtime_context(
-                    current_stage_id=previous_context.get("current_stage_id"),
-                    current_node_id=previous_context.get("current_node_id"),
-                    current_node_kind=previous_context.get("current_node_kind"),
-                )
+                clear_runtime_context()
+                if previous_context:
+                    set_runtime_context(**previous_context)
 
         return instrumented_node
 
@@ -195,8 +203,8 @@ class LiteTradingGraph:
 
         analyst_nodes = {
             "market": create_market_analyst_fast(self.quick_thinking_llm),
-            "news": create_news_analyst(self.quick_thinking_llm),
-            "fundamentals": create_fundamentals_analyst(self.quick_thinking_llm),
+            "news": create_news_analyst_fast(self.quick_thinking_llm),
+            "fundamentals": create_fundamentals_analyst_fast(self.quick_thinking_llm),
         }
         delete_node = create_msg_delete()
         decision_manager_node = create_decision_manager(self.deep_thinking_llm)

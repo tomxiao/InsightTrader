@@ -1,7 +1,9 @@
 from .analysts.fundamentals_analyst import create_fundamentals_analyst
+from .analysts.fundamentals_analyst_fast import create_fundamentals_analyst_fast
 from .analysts.market_analyst import create_market_analyst
 from .analysts.market_analyst_fast import create_market_analyst_fast
 from .analysts.news_analyst import create_news_analyst
+from .analysts.news_analyst_fast import create_news_analyst_fast
 from .analysts.social_media_analyst import create_social_media_analyst
 from .managers.decision_manager import create_decision_manager
 from .managers.portfolio_manager import create_portfolio_manager
@@ -27,10 +29,12 @@ __all__ = [
     "create_decision_manager",
     "create_research_manager",
     "create_fundamentals_analyst",
+    "create_fundamentals_analyst_fast",
     "create_market_analyst",
     "create_market_analyst_fast",
     "create_neutral_debator",
     "create_news_analyst",
+    "create_news_analyst_fast",
     "create_aggressive_debator",
     "create_portfolio_manager",
     "create_conservative_debator",

@@ -15,7 +15,7 @@ from ta_service.config.settings import Settings
 from ta_service.runtime.run_context import RunContext, build_run_context
 from ta_service.runtime.status_mapper import resolve_stage_message
 from ta_service.teams import DEFAULT_TEAM_ID, get_team_spec, normalize_team_id
-from tradingagents.dataflows.config import clear_runtime_context, set_runtime_context
+from tradingagents.dataflows.config import clear_runtime_context, get_runtime_context, set_runtime_context
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.graph.trading_graph import TradingAgentsGraph
 from tradingagents.observability import StageEventTracker
@@ -160,21 +160,27 @@ class TradingAgentsRunner:
             run_started_at_iso=run_context.started_at.isoformat(),
             run_dir_name=run_context.trace_dir.name,
         )
+        graph.node_tracker.runtime_context = get_runtime_context()
 
         final_state: dict | None = None
         selected = payload.selected_analysts or list(team_spec.default_selected_analysts) or ANALYST_ORDER
-        last_stage_id: str | None = None
+        last_stage_ids: set[str] = set()
 
         def _notify_stage_change() -> None:
-            nonlocal last_stage_id
-            current = stage_tracker.current_stage_id
-            if current and current != last_stage_id:
-                last_stage_id = current
-                if payload.on_stage_change:
+            nonlocal last_stage_ids
+            current_ids = set(stage_tracker.current_stage_ids)
+            if not current_ids:
+                last_stage_ids = set()
+                return
+
+            if payload.on_stage_change:
+                new_stage_ids = [stage_id for stage_id in current_ids if stage_id not in last_stage_ids]
+                for stage_id in sorted(new_stage_ids):
                     try:
-                        payload.on_stage_change(current)
+                        payload.on_stage_change(stage_id)
                     except Exception:
                         pass
+            last_stage_ids = current_ids
 
         def _sync_stage_snapshot(snapshot: dict[str, str]) -> None:
             stage_tracker.sync(snapshot)

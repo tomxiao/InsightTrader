@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 import logging
+import time
 from datetime import datetime, timezone
-from typing import Literal, cast
+from typing import Iterator, Literal, cast
 from uuid import uuid4
 
 from fastapi import HTTPException, status
@@ -30,6 +32,9 @@ from ta_service.teams import DEFAULT_TEAM_ID
 logger = logging.getLogger(__name__)
 
 MAX_RESOLUTION_ROUNDS = 2
+_STREAM_PROGRESS_MESSAGE = "正在识别标的，请稍候…"
+_RESOLUTION_DELTA_CHUNK_SIZE = 3
+_RESOLUTION_DELTA_DELAY_SECONDS = 0.03
 
 _TODAY = __import__("datetime").date.today
 
@@ -61,126 +66,62 @@ class ResolutionService:
         conversation_id: str,
         message: str,
     ) -> ResolutionResponse:
-        conversation = self._get_conversation(user_id=user_id, conversation_id=conversation_id)
-        self._ensure_resolution_allowed(conversation)
-
-        current_message = message.strip()
-        existing_pending = _parse_pending_snapshot(conversation.get("pendingResolution"))
-        round_number = (existing_pending.round if existing_pending else 0) + 1
-        resolution_id = str(uuid4())
-        analysis_prompt = _compose_analysis_prompt(
-            existing_pending=existing_pending, message=current_message
-        )
-
-        user_message = self.message_repo.create(
-            conversation_id=conversation_id,
-            role="user",
-            message_type=MessageType.TEXT,
-            content=current_message,
-        )
-
-        if round_number > MAX_RESOLUTION_ROUNDS:
-            result = AgentResolutionResult(
-                status="failed",
-                assistantReply=(
-                    "我暂时还无法准确定位你想分析的股票。请直接提供公司全名或股票代码，"
-                    "例如 AAPL、0700.HK、300750.SZ。"
-                ),
-                terminate=True,
-            )
-        else:
-            resolution_trace_dir = build_resolution_trace_dir(
-                settings=self.analysis_service.settings,
-                conversation_id=conversation_id,
-                resolution_id=resolution_id,
-            )
-            with runtime_trace_scope(
-                run_id=f"resolution-{resolution_id[:12]}",
-                trace_dir=str(resolution_trace_dir),
-                conversation_id=conversation_id,
-                resolution_id=resolution_id,
-                trace_kind="resolution",
-                current_stage_id="resolution.resolve",
-                current_node_id="Resolution Agent",
-            ):
-                result = self.resolution_agent.resolve(
-                    context=ResolutionAgentContext(
-                        currentMessage=current_message,
-                        currentRound=round_number,
-                        priorResolutionSummary=_build_prior_summary(existing_pending),
-                        analysisPrompt=analysis_prompt,
-                        pendingResolution=existing_pending,
-                    )
-                )
-
-        assistant_message = self.message_repo.create(
-            conversation_id=conversation_id,
-            role="assistant",
-            message_type=MessageType.TICKER_RESOLUTION,
-            content=_build_resolution_message_content(
-                resolution_id=resolution_id,
-                result=result,
-                analysis_prompt=analysis_prompt,
-            ),
-        )
-
-        pending_resolution = _build_pending_resolution(
-            resolution_id=resolution_id,
-            round_number=round_number,
-            result=result,
-            original_message=current_message,
-            analysis_prompt=analysis_prompt,
-        )
-        confirmed_stock = (
-            result.stock.model_dump() if result.status == "resolved" and result.stock else None
-        )
-        confirmed_analysis_prompt = analysis_prompt if result.status == "resolved" else None
-        conversation_status = (
-            "ready_to_analyze" if result.status == "resolved" else "collecting_inputs"
-        )
-
-        self.state_machine.transition(
-            conversation_id=conversation_id,
+        prepared = self._prepare_resolution(
             user_id=user_id,
-            to_status=conversation_status,
-            pending_resolution=pending_resolution.model_dump(mode="json")
-            if pending_resolution
-            else None,
-            confirmed_stock=confirmed_stock,
-            confirmed_analysis_prompt=confirmed_analysis_prompt,
+            conversation_id=conversation_id,
+            message=message,
         )
-        logger.info(
-            "resolution_completed conversation_id=%s resolution_id=%s round=%s status=%s candidate_count=%s",
-            conversation_id,
-            resolution_id,
-            round_number,
-            result.status,
-            len(result.candidates),
+        return self._complete_resolution(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            prepared=prepared,
         )
 
-        task_progress = None
-        if result.status == "resolved" and confirmed_stock:
-            ticker = confirmed_stock.get("ticker", "")
-            task_doc = self._try_launch_analysis(
+    def stream_resolve_message(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        message: str,
+    ) -> Iterator[dict[str, object]]:
+        prepared = self._prepare_resolution(
+            user_id=user_id,
+            conversation_id=conversation_id,
+            message=message,
+        )
+
+        yield {
+            "event": "started",
+            "userMessage": build_message(prepared["user_message"]).model_dump(mode="json"),
+        }
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                self._complete_resolution,
                 user_id=user_id,
                 conversation_id=conversation_id,
-                ticker=ticker,
-                prompt=analysis_prompt,
-                team_id=DEFAULT_TEAM_ID,
+                prepared=prepared,
             )
-            if task_doc:
-                conversation_status = "analyzing"
-                task_progress = build_task_progress(task_doc)
+            while not future.done():
+                yield {
+                    "event": "progress",
+                    "message": _STREAM_PROGRESS_MESSAGE,
+                }
+                time.sleep(0.8)
 
-        return _build_resolution_response(
-            resolution_id=resolution_id,
-            result=result,
-            conversation_status=conversation_status,
-            messages=[user_message, assistant_message],
-            analysis_prompt=analysis_prompt,
-            accepted=None,
-            task_progress=task_progress,
-        )
+            response = future.result()
+        for text_chunk in _iter_text_chunks(
+            response.promptMessage,
+            chunk_size=_RESOLUTION_DELTA_CHUNK_SIZE,
+        ):
+            yield {
+                "event": "delta",
+                "text": text_chunk,
+            }
+            time.sleep(_RESOLUTION_DELTA_DELAY_SECONDS)
+        yield {
+            "event": "completed",
+            "response": response.model_dump(mode="json"),
+        }
 
     def confirm_resolution(
         self,
@@ -311,6 +252,155 @@ class ResolutionService:
                 conversation_id,
             )
             return None
+
+    def _prepare_resolution(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        message: str,
+    ) -> dict:
+        conversation = self._get_conversation(user_id=user_id, conversation_id=conversation_id)
+        self._ensure_resolution_allowed(conversation)
+
+        current_message = message.strip()
+        existing_pending = _parse_pending_snapshot(conversation.get("pendingResolution"))
+        round_number = (existing_pending.round if existing_pending else 0) + 1
+        resolution_id = str(uuid4())
+        analysis_prompt = _compose_analysis_prompt(
+            existing_pending=existing_pending, message=current_message
+        )
+        user_message = self.message_repo.create(
+            conversation_id=conversation_id,
+            role="user",
+            message_type=MessageType.TEXT,
+            content=current_message,
+        )
+        return {
+            "current_message": current_message,
+            "existing_pending": existing_pending,
+            "round_number": round_number,
+            "resolution_id": resolution_id,
+            "analysis_prompt": analysis_prompt,
+            "user_message": user_message,
+        }
+
+    def _complete_resolution(
+        self,
+        *,
+        user_id: str,
+        conversation_id: str,
+        prepared: dict,
+    ) -> ResolutionResponse:
+        current_message = cast(str, prepared["current_message"])
+        existing_pending = cast(PendingResolutionSnapshot | None, prepared["existing_pending"])
+        round_number = cast(int, prepared["round_number"])
+        resolution_id = cast(str, prepared["resolution_id"])
+        analysis_prompt = cast(str, prepared["analysis_prompt"])
+        user_message = prepared["user_message"]
+
+        if round_number > MAX_RESOLUTION_ROUNDS:
+            result = AgentResolutionResult(
+                status="failed",
+                assistantReply=(
+                    "我暂时还无法准确定位你想分析的股票。请直接提供公司全名或股票代码，"
+                    "例如 AAPL、0700.HK、300750.SZ。"
+                ),
+                terminate=True,
+            )
+        else:
+            resolution_trace_dir = build_resolution_trace_dir(
+                settings=self.analysis_service.settings,
+                conversation_id=conversation_id,
+                resolution_id=resolution_id,
+            )
+            with runtime_trace_scope(
+                run_id=f"resolution-{resolution_id[:12]}",
+                trace_dir=str(resolution_trace_dir),
+                conversation_id=conversation_id,
+                resolution_id=resolution_id,
+                trace_kind="resolution",
+                current_stage_id="resolution.resolve",
+                current_node_id="Resolution Agent",
+            ):
+                result = self.resolution_agent.resolve(
+                    context=ResolutionAgentContext(
+                        currentMessage=current_message,
+                        currentRound=round_number,
+                        priorResolutionSummary=_build_prior_summary(existing_pending),
+                        analysisPrompt=analysis_prompt,
+                        pendingResolution=existing_pending,
+                    )
+                )
+
+        assistant_message = self.message_repo.create(
+            conversation_id=conversation_id,
+            role="assistant",
+            message_type=MessageType.TICKER_RESOLUTION,
+            content=_build_resolution_message_content(
+                resolution_id=resolution_id,
+                result=result,
+                analysis_prompt=analysis_prompt,
+            ),
+        )
+
+        pending_resolution = _build_pending_resolution(
+            resolution_id=resolution_id,
+            round_number=round_number,
+            result=result,
+            original_message=current_message,
+            analysis_prompt=analysis_prompt,
+        )
+        confirmed_stock = (
+            result.stock.model_dump() if result.status == "resolved" and result.stock else None
+        )
+        confirmed_analysis_prompt = analysis_prompt if result.status == "resolved" else None
+        conversation_status = (
+            "ready_to_analyze" if result.status == "resolved" else "collecting_inputs"
+        )
+
+        self.state_machine.transition(
+            conversation_id=conversation_id,
+            user_id=user_id,
+            to_status=conversation_status,
+            pending_resolution=pending_resolution.model_dump(mode="json")
+            if pending_resolution
+            else None,
+            confirmed_stock=confirmed_stock,
+            confirmed_analysis_prompt=confirmed_analysis_prompt,
+        )
+        logger.info(
+            "resolution_completed conversation_id=%s resolution_id=%s round=%s status=%s candidate_count=%s",
+            conversation_id,
+            resolution_id,
+            round_number,
+            result.status,
+            len(result.candidates),
+        )
+
+        task_progress = None
+        if result.status == "resolved" and confirmed_stock:
+            ticker = confirmed_stock.get("ticker", "")
+            task_doc = self._try_launch_analysis(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                ticker=ticker,
+                prompt=analysis_prompt,
+                team_id=DEFAULT_TEAM_ID,
+            )
+            if task_doc:
+                conversation_status = "analyzing"
+                task_progress = build_task_progress(task_doc)
+
+        return _build_resolution_response(
+            resolution_id=resolution_id,
+            result=result,
+            conversation_status=conversation_status,
+            messages=[user_message, assistant_message],
+            analysis_prompt=analysis_prompt,
+            accepted=None,
+            task_progress=task_progress,
+        )
         trade_date = _TODAY().strftime("%Y%m%d")
         try:
             task_doc = self.analysis_service.launch_analysis(
@@ -518,3 +608,10 @@ def _compose_analysis_prompt(
 def _is_reset_message(message: str) -> bool:
     lowered = message.lower()
     return any(keyword in lowered for keyword in ("改成", "换成", "重新", "不要", "不是"))
+
+
+def _iter_text_chunks(text: str, *, chunk_size: int) -> Iterator[str]:
+    normalized = (text or "").strip()
+    if not normalized:
+        return iter(())
+    return (normalized[index : index + chunk_size] for index in range(0, len(normalized), chunk_size))

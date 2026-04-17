@@ -21,6 +21,7 @@ const mockGetConversation = vi.fn()
 const mockCreateConversation = vi.fn()
 const mockDeleteConversation = vi.fn()
 const mockResolve = vi.fn()
+const mockStreamResolve = vi.fn()
 const mockPostMessage = vi.fn()
 const mockStreamPostMessage = vi.fn()
 const mockConfirmResolution = vi.fn()
@@ -40,6 +41,7 @@ vi.mock('@api/conversations', () => ({
     createConversation: (...args: unknown[]) => mockCreateConversation(...args),
     deleteConversation: (...args: unknown[]) => mockDeleteConversation(...args),
     resolve: (...args: unknown[]) => mockResolve(...args),
+    streamResolve: (...args: unknown[]) => mockStreamResolve(...args),
     postMessage: (...args: unknown[]) => mockPostMessage(...args),
     streamPostMessage: (...args: unknown[]) => mockStreamPostMessage(...args),
     confirmResolution: (...args: unknown[]) => mockConfirmResolution(...args),
@@ -139,6 +141,7 @@ const mountConversationPage = async (detail: ConversationDetail) => {
   mockCreateConversation.mockResolvedValue(makeSummary(detail))
   mockDeleteConversation.mockResolvedValue(undefined)
   mockResolve.mockResolvedValue({ messages: [], conversationStatus: detail.status })
+  mockStreamResolve.mockResolvedValue(undefined)
   mockPostMessage.mockResolvedValue({ messages: [] })
   mockStreamPostMessage.mockResolvedValue(undefined)
   mockConfirmResolution.mockResolvedValue({ messages: [], conversationStatus: detail.status })
@@ -175,6 +178,7 @@ describe('ConversationPage acceptance', () => {
     mockCreateConversation.mockReset()
     mockDeleteConversation.mockReset()
     mockResolve.mockReset()
+    mockStreamResolve.mockReset()
     mockPostMessage.mockReset()
     mockStreamPostMessage.mockReset()
     mockConfirmResolution.mockReset()

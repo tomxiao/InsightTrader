@@ -135,6 +135,39 @@ def resolve_conversation_message(
     )
 
 
+@router.post("/{conversation_id}/resolution/stream")
+def stream_resolve_conversation_message(
+    conversation_id: str,
+    payload: ResolutionRequest,
+    current_user: MobileUser = Depends(get_current_user),
+    resolution_service: ResolutionService = Depends(get_resolution_service),
+) -> StreamingResponse:
+    def event_stream():
+        try:
+            for item in resolution_service.stream_resolve_message(
+                user_id=current_user.id,
+                conversation_id=conversation_id,
+                message=payload.message,
+            ):
+                event = str(item.get("event") or "message")
+                data = {key: value for key, value in item.items() if key != "event"}
+                yield _format_sse(event=event, data=data)
+        except HTTPException as exc:
+            yield _format_sse("error", {"message": exc.detail, "status_code": exc.status_code})
+        except Exception as exc:
+            yield _format_sse("error", {"message": str(exc)})
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
 @router.post("/{conversation_id}/resolution/confirm", response_model=ResolutionResponse)
 def confirm_conversation_resolution(
     conversation_id: str,

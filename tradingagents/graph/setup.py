@@ -21,7 +21,12 @@ from tradingagents.agents import (
     create_trader,
 )
 from tradingagents.agents.utils.agent_states import AgentState
-from tradingagents.dataflows.config import get_runtime_context, set_runtime_context
+from tradingagents.dataflows.config import (
+    clear_runtime_context,
+    get_runtime_context,
+    set_config,
+    set_runtime_context,
+)
 from tradingagents.observability import resolve_node_kind, resolve_stage_id_for_node
 
 from .conditional_logic import ConditionalLogic
@@ -70,11 +75,16 @@ class GraphSetup:
 
         def instrumented_node(*args, **kwargs):
             previous_context = get_runtime_context()
+            base_context = dict(getattr(node_tracker, "runtime_context", {}))
             node_tracker.mark_started(
                 node_id=node_name,
                 stage_id=stage_id,
                 node_kind=node_kind,
             )
+            set_config(node_tracker.config)
+            clear_runtime_context()
+            if base_context:
+                set_runtime_context(**base_context)
             set_runtime_context(
                 current_stage_id=stage_id,
                 current_node_id=node_name,
@@ -89,11 +99,9 @@ class GraphSetup:
                 node_tracker.mark_completed()
                 return result
             finally:
-                set_runtime_context(
-                    current_stage_id=previous_context.get("current_stage_id"),
-                    current_node_id=previous_context.get("current_node_id"),
-                    current_node_kind=previous_context.get("current_node_kind"),
-                )
+                clear_runtime_context()
+                if previous_context:
+                    set_runtime_context(**previous_context)
 
         return instrumented_node
 
