@@ -14,6 +14,12 @@ import { request } from './request'
 
 const followupRequestTimeoutMs = 240000
 
+type StreamApiError = Error & {
+  status?: number
+  detail?: string
+  code?: string
+}
+
 export type StreamMessageEvent =
   | { event: 'started'; userMessage: ConversationMessage }
   | {
@@ -72,16 +78,16 @@ export const conversationsApi = {
     })
 
     if (!response.ok || !response.body) {
-      let message = '流式回复失败，请稍后再试'
+      let detail = ''
+      let code = ''
       try {
         const data = await response.json()
-        if (typeof data?.detail === 'string') {
-          message = data.detail
-        }
+        if (typeof data?.detail === 'string') detail = data.detail
+        if (typeof data?.code === 'string') code = data.code
       } catch {
         // ignore JSON parse errors
       }
-      throw new Error(message)
+      throw createStreamApiError('流式回复失败，请稍后再试', response.status, detail, code)
     }
 
     const reader = response.body.getReader()
@@ -120,16 +126,16 @@ export const conversationsApi = {
     })
 
     if (!response.ok || !response.body) {
-      let message = '流式识别失败，请稍后再试'
+      let detail = ''
+      let code = ''
       try {
         const data = await response.json()
-        if (typeof data?.detail === 'string') {
-          message = data.detail
-        }
+        if (typeof data?.detail === 'string') detail = data.detail
+        if (typeof data?.code === 'string') code = data.code
       } catch {
         // ignore JSON parse errors
       }
-      throw new Error(message)
+      throw createStreamApiError('流式识别失败，请稍后再试', response.status, detail, code)
     }
 
     const reader = response.body.getReader()
@@ -169,6 +175,14 @@ export const conversationsApi = {
   deleteConversation(conversationId: string) {
     return request.delete(`/conversations/${conversationId}`).then(response => response.data)
   }
+}
+
+function createStreamApiError(message: string, status?: number, detail?: string, code?: string): StreamApiError {
+  const error = new Error(message) as StreamApiError
+  error.status = status
+  error.detail = detail
+  error.code = code
+  return error
 }
 
 function parseSseEvent<T extends { event: string }>(rawEvent: string): T | null {

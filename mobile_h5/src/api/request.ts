@@ -32,10 +32,6 @@ request.interceptors.response.use(
       }
     }
 
-    if (isAxios && typeof error.response?.data?.detail === 'string') {
-      error.message = error.response.data.detail
-    }
-
     return Promise.reject(error)
   }
 )
