@@ -25,6 +25,8 @@ INCLUDE_FILES = {
     "Dockerfile.ta_service",
     "docker-compose.prod.yml",
     "pyproject.toml",
+    "uv.lock",
+    "README.md",
     ".env.production.example",
     "deploy/VERSION",
 }

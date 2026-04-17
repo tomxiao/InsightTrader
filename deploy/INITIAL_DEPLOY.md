@@ -120,7 +120,7 @@ cd $REPO
 python deploy/upload.py
 ```
 
-`upload.py` 白名单只上传必要内容：`ta_service/`、`tradingagents/`、`tests/`、`deploy/`，以及 `Dockerfile.ta_service`、`docker-compose.prod.yml`、`pyproject.toml`、`.env.production.example`。
+`upload.py` 白名单只上传后端运行与镜像构建真正需要的内容：`ta_service/`、`tradingagents/`，以及 `Dockerfile.ta_service`、`docker-compose.prod.yml`、`pyproject.toml`、`uv.lock`、`README.md`、`.env.production.example`、`deploy/VERSION`。
 
 脚本会自动创建远端 `/opt/insighttrader/` 目录，无需手动创建。
 

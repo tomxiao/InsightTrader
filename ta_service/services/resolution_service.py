@@ -253,6 +253,32 @@ class ResolutionService:
             )
             return None
 
+        trade_date = _TODAY().strftime("%Y%m%d")
+        try:
+            task_doc = self.analysis_service.launch_analysis(
+                user_id=user_id,
+                conversation_id=conversation_id,
+                ticker=ticker,
+                trade_date=trade_date,
+                prompt=prompt,
+                team_id=team_id,
+            )
+            logger.info(
+                "auto_launch_success conversation_id=%s ticker=%s task_id=%s",
+                conversation_id,
+                ticker,
+                task_doc["taskId"],
+            )
+            return task_doc
+        except Exception as exc:
+            logger.exception(
+                "auto_launch_failed conversation_id=%s ticker=%s error=%s",
+                conversation_id,
+                ticker,
+                exc,
+            )
+            return None
+
     def _prepare_resolution(
         self,
         *,
@@ -401,31 +427,6 @@ class ResolutionService:
             accepted=None,
             task_progress=task_progress,
         )
-        trade_date = _TODAY().strftime("%Y%m%d")
-        try:
-            task_doc = self.analysis_service.launch_analysis(
-                user_id=user_id,
-                conversation_id=conversation_id,
-                ticker=ticker,
-                trade_date=trade_date,
-                prompt=prompt,
-                team_id=team_id,
-            )
-            logger.info(
-                "auto_launch_success conversation_id=%s ticker=%s task_id=%s",
-                conversation_id,
-                ticker,
-                task_doc["taskId"],
-            )
-            return task_doc
-        except Exception as exc:
-            logger.exception(
-                "auto_launch_failed conversation_id=%s ticker=%s error=%s",
-                conversation_id,
-                ticker,
-                exc,
-            )
-            return None
 
     def _get_conversation(self, *, user_id: str, conversation_id: str) -> dict:
         conversation = self.conversation_repo.get_for_user(

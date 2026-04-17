@@ -1,0 +1,4 @@
+interface:
+  display_name: "Daily Deploy"
+  short_description: "Run the routine InsightTrader deployment workflow and report outcomes."
+  default_prompt: "Use $daily-deploy when asked to execute a remote deploy or deploy production. For long-running deploys, work in a deploy-check-report loop instead of waiting silently. If deployment fails, report the failure and suggestions only; do not auto-fix."

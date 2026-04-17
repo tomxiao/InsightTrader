@@ -1,0 +1,4 @@
+interface:
+  display_name: "Local API CI"
+  short_description: "Run the local CI flow for ta_service API contracts and startup safety checks."
+  default_prompt: "Use $local-api-ci to run the local CI flow without starting services, keeping automated tests scoped to ta_service API contracts."

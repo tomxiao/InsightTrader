@@ -3,7 +3,9 @@ FROM m.daocloud.io/docker.io/library/python:3.12-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple \
     UV_LINK_MODE=copy \
+    UV_DEFAULT_INDEX=https://pypi.tuna.tsinghua.edu.cn/simple \
     UV_PROJECT_ENVIRONMENT=/opt/venv
 
 RUN pip install --no-cache-dir uv && python -m venv /opt/venv
