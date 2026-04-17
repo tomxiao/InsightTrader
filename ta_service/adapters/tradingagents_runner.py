@@ -33,6 +33,9 @@ LOGGER = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class RunnerRequest:
+    user_id: str
+    username: str
+    conversation_id: str
     ticker: str
     trade_date: str
     selected_analysts: list[str]
@@ -141,6 +144,9 @@ class TradingAgentsRunner:
             runtime_context={
                 "run_id": run_context.run_id,
                 "trace_dir": str(run_context.trace_dir),
+                "user_id": payload.user_id,
+                "username": payload.username,
+                "conversation_id": payload.conversation_id,
                 "ticker": payload.ticker,
                 "trade_date": payload.trade_date,
                 "team_id": team_spec.team_id,
@@ -154,6 +160,9 @@ class TradingAgentsRunner:
         set_runtime_context(
             run_id=run_context.run_id,
             trace_dir=str(run_context.trace_dir),
+            user_id=payload.user_id,
+            username=payload.username,
+            conversation_id=payload.conversation_id,
             ticker=payload.ticker,
             trade_date=payload.trade_date,
             team_id=team_spec.team_id,

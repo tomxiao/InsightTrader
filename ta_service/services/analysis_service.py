@@ -13,6 +13,7 @@ from ta_service.models.message_types import MessageType
 from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
+from ta_service.runtime.user_trace import append_user_trace
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.teams import DEFAULT_TEAM_ID, get_team_spec, normalize_team_id
 from ta_service.workers.launcher import spawn_analysis_task_runner
@@ -54,6 +55,7 @@ class AnalysisService:
         self,
         *,
         user_id: str,
+        username: str,
         payload: CreateAnalysisTaskRequest,
     ) -> AnalysisTaskStatusResponse:
         conversation = self.conversation_repo.get_for_user(
@@ -96,6 +98,7 @@ class AnalysisService:
 
         task_doc = self.launch_analysis(
             user_id=user_id,
+            username=username,
             conversation_id=payload.conversationId,
             ticker=payload.ticker,
             trade_date=payload.tradeDate,
@@ -109,6 +112,7 @@ class AnalysisService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         ticker: str,
         trade_date: str,
@@ -125,6 +129,7 @@ class AnalysisService:
         get_team_spec(normalized_team_id)
         document = self.task_repo.create(
             user_id=user_id,
+            username=username,
             conversation_id=conversation_id,
             ticker=ticker,
             trade_date=trade_date,
@@ -132,12 +137,38 @@ class AnalysisService:
             team_id=normalized_team_id,
             selected_analysts=selected_analysts or [],
         )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="analysis_task",
+            event="user_input",
+            settings=self.settings,
+            taskId=document["taskId"],
+            ticker=ticker,
+            tradeDate=trade_date,
+            prompt=prompt_text,
+            teamId=normalized_team_id,
+            selectedAnalysts=selected_analysts or [],
+        )
 
         self.message_repo.create(
             conversation_id=conversation_id,
             role="system",
             message_type=MessageType.TASK_STATUS,
             content={"text": "已收到分析请求，正在准备任务", "stageId": None},
+        )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="analysis_task",
+            event="assistant_reply",
+            settings=self.settings,
+            taskId=document["taskId"],
+            messageType=MessageType.TASK_STATUS,
+            reply="已收到分析请求，正在准备任务",
+            stageId=None,
         )
         title = (
             " ".join(prompt_text.strip().split())[:30]
@@ -184,6 +215,18 @@ class AnalysisService:
                 status="pending",
                 currentStep="任务已启动",
                 message="任务已启动",
+            )
+            append_user_trace(
+                user_id=user_id,
+                username=username,
+                conversation_id=conversation_id,
+                phase="analysis_task",
+                event="assistant_reply",
+                settings=self.settings,
+                taskId=document["taskId"],
+                messageType=MessageType.TASK_STATUS,
+                reply="任务已启动",
+                status="pending",
             )
             document["status"] = "pending"
             document["currentStep"] = "任务已启动"

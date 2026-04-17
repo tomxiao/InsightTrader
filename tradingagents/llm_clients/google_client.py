@@ -44,6 +44,7 @@ class NormalizedChatGoogleGenerativeAI(ChatGoogleGenerativeAI):
             duration_ms=int((time.monotonic() - started_at) * 1000),
             provider=provider,
             model=model,
+            llm_output=response,
         )
         return normalize_content(response)
 

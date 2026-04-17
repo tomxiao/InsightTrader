@@ -134,23 +134,34 @@ def test_post_message_writes_user_scoped_insight_reply_log(tmp_path: Path) -> No
     )
 
     assert len(response.messages) == 2
-    log_path = tmp_path / "logs" / "tom" / "insight_reply.jsonl"
+    log_path = tmp_path / "logs" / "user" / "tom.jsonl"
     assert log_path.exists()
 
-    record = json.loads(log_path.read_text(encoding="utf-8").strip())
-    assert record["conversation_title"] == "SNDK 追问"
-    assert record["conversation_id"] == "conv-1"
-    assert record["reply_id"]
-    assert record["reply_trace_dir"].endswith(record["reply_id"])
-    assert record["report_dir"].endswith(str(Path("reports") / "SNDK_2026_0415_0820"))
-    assert record["user_input"] == "主要风险是什么？"
-    assert record["gating"]["intent"] == "risk"
-    assert record["gating"]["primary_section"] == "risk_cons"
-    assert record["gating"]["fallback_sections"] == ["research_mgr"]
-    assert record["llm_router_ms"] == 123.4
-    assert record["llm_reply_ms"] == 567.8
-    assert "e2e_ms" not in record
-    assert record["reply"] == "主要风险还是估值太高，回撤会被放大。"
+    records = [
+        json.loads(line)
+        for line in log_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert len(records) == 2
+
+    user_record, assistant_record = records
+    assert user_record["conversationId"] == "conv-1"
+    assert user_record["userName"] == "tom"
+    assert user_record["phase"] == "insight_reply"
+    assert user_record["event"] == "user_input"
+    assert user_record["message"] == "主要风险是什么？"
+
+    assert assistant_record["conversationId"] == "conv-1"
+    assert assistant_record["userName"] == "tom"
+    assert assistant_record["phase"] == "insight_reply"
+    assert assistant_record["event"] == "assistant_reply"
+    assert assistant_record["replyId"]
+    assert assistant_record["routingIntent"] == "risk"
+    assert assistant_record["routingPrimarySection"] == "risk_cons"
+    assert assistant_record["routingFallbackSections"] == ["research_mgr"]
+    assert assistant_record["llmRouterMs"] == 123.4
+    assert assistant_record["llmReplyMs"] == 567.8
+    assert assistant_record["reply"] == "主要风险还是估值太高，回撤会被放大。"
 
 
 def test_build_conversation_history_keeps_only_recent_two_rounds(tmp_path: Path) -> None:
@@ -195,3 +206,26 @@ def test_build_conversation_history_keeps_only_recent_two_rounds(tmp_path: Path)
         {"role": "user", "content": "u3"},
         {"role": "assistant", "content": "a3"},
     ]
+
+
+def test_append_user_trace_falls_back_to_unknown_when_username_missing(tmp_path: Path) -> None:
+    from ta_service.runtime.user_trace import append_user_trace
+
+    append_user_trace(
+        user_id="",
+        username=None,
+        conversation_id="conv-unknown",
+        phase="resolution",
+        event="user_input",
+        settings=SimpleNamespace(logs_root=tmp_path / "logs"),
+        message="hello",
+    )
+
+    log_path = tmp_path / "logs" / "user" / "unknown.jsonl"
+    assert log_path.exists()
+
+    record = json.loads(log_path.read_text(encoding="utf-8").strip())
+    assert record["userName"] == "unknown"
+    assert record["conversationId"] == "conv-unknown"
+    assert record["phase"] == "resolution"
+    assert record["event"] == "user_input"

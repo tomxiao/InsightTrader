@@ -10,6 +10,7 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import tool
 
 from ta_service.models.report_insight import ReportInsightContext, ReportInsightResult
+from ta_service.runtime.user_trace import append_runtime_user_trace
 from ta_service.services.insight_reply_router import InsightReplyRouter
 from ta_service.services.report_context_loader import _SECTION_LABELS, ReportContextLoader
 from ta_service.teams import DEFAULT_TEAM_ID, get_section_labels
@@ -251,9 +252,22 @@ class ReportInsightAgent:
         ai_message: BaseMessage | None = None
 
         for _ in range(_MAX_TOOL_ROUNDS + 1):
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_input",
+                inputPhase="tool_reasoning",
+                inputPreview=_preview_text(history),
+            )
             next_message = tool_llm.invoke(history)
             ai_message = next_message
             history.append(next_message)
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_output",
+                outputPhase="tool_reasoning",
+                outputPreview=_extract_text(next_message),
+                toolCallCount=len(getattr(next_message, "tool_calls", None) or []),
+            )
             tool_calls = list(getattr(next_message, "tool_calls", None) or [])
             if not tool_calls:
                 break
@@ -412,9 +426,22 @@ class ReportInsightAgent:
         ai_message: BaseMessage | None = None
 
         for _ in range(_MAX_TOOL_ROUNDS + 1):
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_input",
+                inputPhase="tool_reasoning",
+                inputPreview=_preview_text(history),
+            )
             next_message = tool_llm.invoke(history)
             ai_message = next_message
             history.append(next_message)
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_output",
+                outputPhase="tool_reasoning",
+                outputPreview=_extract_text(next_message),
+                toolCallCount=len(getattr(next_message, "tool_calls", None) or []),
+            )
             tool_calls = list(getattr(next_message, "tool_calls", None) or [])
             if not tool_calls:
                 break
@@ -460,6 +487,12 @@ class ReportInsightAgent:
                 tool_rounds_used=tool_rounds_used,
                 tool_budget_exhausted=tool_budget_exhausted,
             )
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_input",
+                inputPhase="final_answer",
+                inputPreview=_preview_text(final_messages, max_chars=1200),
+            )
             for chunk in llm.stream(final_messages):
                 text = _extract_text(chunk)
                 if not text:
@@ -467,6 +500,12 @@ class ReportInsightAgent:
                 answer_parts.append(text)
                 yield {"event": "delta", "text": text}
             answer = _post_process_answer("".join(answer_parts))
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_output",
+                outputPhase="final_answer",
+                outputPreview=answer,
+            )
         else:
             stream_messages = prompt.format_messages(input_text=_build_agent_input(context))
             answer = yield from self._stream_final_text(
@@ -555,7 +594,19 @@ class ReportInsightAgent:
         messages.append(("human", context.question))
 
         try:
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_input",
+                inputPhase="preloaded_answer",
+                inputPreview=_preview_text(messages, max_chars=1200),
+            )
             response = llm.invoke(messages)
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_output",
+                outputPhase="preloaded_answer",
+                outputPreview=_extract_text(response),
+            )
             raw_answer = _extract_text(response).strip()
             answer = _post_process_answer(raw_answer)
         except Exception as exc:
@@ -628,6 +679,12 @@ class ReportInsightAgent:
     ) -> Iterator[dict[str, str]]:
         answer_parts: list[str] = []
         try:
+            append_runtime_user_trace(
+                phase="insight_reply",
+                event="llm_input",
+                inputPhase="stream_final_answer",
+                inputPreview=_preview_text(messages, max_chars=1200),
+            )
             for chunk in llm.stream(messages):
                 text = _extract_text(chunk)
                 if not text:
@@ -644,7 +701,14 @@ class ReportInsightAgent:
                     return answer
             raise
 
-        return _post_process_answer("".join(answer_parts))
+        answer = _post_process_answer("".join(answer_parts))
+        append_runtime_user_trace(
+            phase="insight_reply",
+            event="llm_output",
+            outputPhase="stream_final_answer",
+            outputPreview=answer,
+        )
+        return answer
 
     def _build_tools(self, *, trace_dir: str | None, team_id: str = DEFAULT_TEAM_ID) -> list:
         loader = self._report_context_loader
@@ -691,7 +755,20 @@ class ReportInsightAgent:
             tool_rounds_used=tool_rounds_used,
             tool_budget_exhausted=tool_budget_exhausted,
         )
-        return llm.invoke(final_messages)
+        append_runtime_user_trace(
+            phase="insight_reply",
+            event="llm_input",
+            inputPhase="final_answer",
+            inputPreview=_preview_text(final_messages, max_chars=1200),
+        )
+        response = llm.invoke(final_messages)
+        append_runtime_user_trace(
+            phase="insight_reply",
+            event="llm_output",
+            outputPhase="final_answer",
+            outputPreview=_extract_text(response),
+        )
+        return response
 
     def _build_final_answer_messages(
         self,
@@ -858,3 +935,10 @@ def _iter_text_delta_events(text: str) -> Iterator[dict[str, str]]:
         yield {"event": "delta", "text": cleaned[index : index + _STREAM_DELTA_CHARS]}
         if index + _STREAM_DELTA_CHARS < len(cleaned):
             time.sleep(_STREAM_DELTA_DELAY_SECONDS)
+
+
+def _preview_text(value: Any, max_chars: int = 800) -> str:
+    text = _extract_text(value).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "...[truncated]"

@@ -14,6 +14,7 @@ from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.repos.task_events import TaskEventRepository
+from ta_service.runtime.user_trace import append_user_trace
 from ta_service.runtime.status_mapper import resolve_node_message, resolve_stage_message
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.teams import get_team_spec, normalize_team_id
@@ -116,6 +117,19 @@ class AnalysisTaskRunner:
                 message_type=MessageType.TASK_STATUS,
                 content={"text": label, "stageId": stage_id},
             )
+            append_user_trace(
+                user_id=job.userId,
+                username=getattr(job, "username", None),
+                conversation_id=job.conversationId,
+                phase="analysis_task",
+                event="assistant_reply",
+                settings=self.settings,
+                taskId=job.taskId,
+                messageType=MessageType.TASK_STATUS,
+                reply=label,
+                stageId=stage_id,
+                elapsedTime=elapsed,
+            )
 
         def on_node_change(node_id: str, stage_id: str) -> None:
             """Agent node 变化时更新 task 文档（仅影响 taskProgress，不写消息流）。"""
@@ -149,6 +163,9 @@ class AnalysisTaskRunner:
 
         team_spec = get_team_spec(job.teamId)
         runner_request = RunnerRequest(
+            user_id=job.userId,
+            username=getattr(job, "username", "") or "",
+            conversation_id=job.conversationId,
             ticker=job.ticker,
             trade_date=job.tradeDate,
             selected_analysts=job.selectedAnalysts or list(team_spec.default_selected_analysts),
@@ -192,6 +209,17 @@ class AnalysisTaskRunner:
             message_type=MessageType.TASK_STATUS,
             content={"text": "投资团队已开始分析，正在为你整理关键信息", "stageId": None},
         )
+        append_user_trace(
+            user_id=job.userId,
+            username=getattr(job, "username", None),
+            conversation_id=job.conversationId,
+            phase="analysis_task",
+            event="assistant_reply",
+            settings=self.settings,
+            taskId=job.taskId,
+            messageType=MessageType.TASK_STATUS,
+            reply="投资团队已开始分析，正在为你整理关键信息",
+        )
 
         try:
             result = self.runner.run_analysis(runner_request)
@@ -229,6 +257,18 @@ class AnalysisTaskRunner:
                 message_type=MessageType.SUMMARY_CARD,
                 content={"text": result.executive_summary or "分析已完成"},
             )
+            append_user_trace(
+                user_id=job.userId,
+                username=getattr(job, "username", None),
+                conversation_id=job.conversationId,
+                phase="analysis_task",
+                event="assistant_reply",
+                settings=self.settings,
+                taskId=job.taskId,
+                messageType=MessageType.SUMMARY_CARD,
+                reply=result.executive_summary or "分析已完成",
+                status="completed",
+            )
         except Exception as exc:
             LOGGER.exception("analysis job failed: %s", job.taskId)
             existing_task_doc = self.task_repo.get_by_task_id(job.taskId) or {}
@@ -265,6 +305,19 @@ class AnalysisTaskRunner:
                 role="system",
                 message_type=MessageType.ERROR,
                 content={"text": "分析未能完成，请稍后重新发起分析请求。"},
+            )
+            append_user_trace(
+                user_id=job.userId,
+                username=getattr(job, "username", None),
+                conversation_id=job.conversationId,
+                phase="analysis_task",
+                event="assistant_reply",
+                settings=self.settings,
+                taskId=job.taskId,
+                messageType=MessageType.ERROR,
+                reply="分析未能完成，请稍后重新发起分析请求。",
+                status="failed",
+                error=str(exc),
             )
 
 

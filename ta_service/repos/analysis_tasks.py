@@ -19,6 +19,7 @@ class AnalysisTaskRepository:
         self,
         *,
         user_id: str,
+        username: str | None = None,
         conversation_id: str,
         ticker: str,
         trade_date: str,
@@ -33,6 +34,7 @@ class AnalysisTaskRepository:
         document = {
             "taskId": str(uuid4()),
             "userId": user_id,
+            "username": username,
             "conversationId": conversation_id,
             "symbol": ticker,
             "tradeDate": trade_date,

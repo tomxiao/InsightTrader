@@ -11,6 +11,7 @@ from langchain_core.tools import BaseTool
 from langchain_core.tools import tool
 
 from ta_service.models.resolution import AgentResolutionResult, ResolutionAgentContext
+from ta_service.runtime.user_trace import append_runtime_user_trace
 from ta_service.services.stock_lookup_gateway import StockLookupGateway
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.factory import create_llm_client
@@ -74,32 +75,103 @@ _FINAL_OUTPUT_EXAMPLE = {
     "terminate": False,
 }
 
+_FINAL_OUTPUT_RESOLVED_EXAMPLE = {
+    "status": "resolved",
+    "assistantReply": "已确认标的是腾讯控股（0700.HK），现在开始为你准备分析。",
+    "stock": {
+        "ticker": "0700.HK",
+        "name": "腾讯控股",
+        "market": "HK",
+        "exchange": "HKEX",
+        "aliases": [],
+        "score": 1.0,
+        "assetType": "stock",
+        "isActive": True,
+    },
+    "candidates": [],
+    "focusPoints": [],
+    "shouldCreateAnalysisTask": True,
+    "terminate": True,
+}
+
+_FINAL_OUTPUT_FAILED_EXAMPLE = {
+    "status": "failed",
+    "assistantReply": "标的识别暂时失败，请稍后重试，或直接提供更标准的股票代码。",
+    "stock": None,
+    "candidates": [],
+    "focusPoints": [],
+    "shouldCreateAnalysisTask": False,
+    "terminate": True,
+}
+
+_FINAL_OUTPUT_UNSUPPORTED_EXAMPLE = {
+    "status": "unsupported",
+    "assistantReply": "当前只支持单只股票分析，请直接提供一家公司名称或股票代码。",
+    "stock": None,
+    "candidates": [],
+    "focusPoints": [],
+    "shouldCreateAnalysisTask": False,
+    "terminate": True,
+}
+
 _FINAL_OUTPUT_PROMPT = """你现在需要基于已有对话和工具结果输出最终结构化结果。
 
 输出要求：
-1. 你必须只输出一个 JSON 对象，不要输出 markdown、解释或额外文字。
-2. JSON 字段必须严格符合 AgentResolutionResult schema。
-3. 必须使用字段名 status，不要使用 state、resolution 或其他别名。
-4. 必须使用字段名 assistantReply，不要使用 reply、assistant_message、message 或其他别名。
-5. candidates 必须始终是数组；没有候选时输出 []，不要输出 null。
-6. stock 字段仅在 need_confirm 或 resolved 时提供；其他状态输出 null。
-7. shouldCreateAnalysisTask 仅在 resolved 时为 true。
-8. terminate 在 resolved、unsupported、failed 时为 true。
-9. 如果工具结果中出现 error，请优先输出 failed，并给出清晰中文提示。
-10. focusPoints 仅保留真正与分析目标相关的关注点。
+1. 你必须只输出一个 JSON 对象，不要输出 markdown、代码块、解释、前后缀或任何额外文字。
+2. 你的输出必须以字符 {{ 开始，并以字符 }} 结束。
+3. 禁止输出数组作为根节点；禁止输出 null、true、false、字符串或数字作为完整回复。
+4. 禁止输出 XML、HTML、标签片段、函数调用片段、tool call 残片、DSML 标记或类似 </...> 的内容。
+5. JSON 字段必须严格符合 AgentResolutionResult schema。
+6. 必须使用字段名 status，不要使用 state、resolution 或其他别名。
+7. 必须使用字段名 assistantReply，不要使用 reply、assistant_message、message 或其他别名。
+8. candidates 必须始终是数组；没有候选时输出 []，不要输出 null。
+9. stock 字段仅在 need_confirm 或 resolved 时提供；其他状态输出 null。
+10. shouldCreateAnalysisTask 仅在 resolved 时为 true。
+11. terminate 在 resolved、unsupported、failed 时为 true。
+12. 如果工具结果中出现 error，请优先输出 failed，并给出清晰中文提示。
+13. 如果你无法完全确定正确状态，也必须输出一个合法 JSON 对象；默认输出合法的 failed 对象，绝不能输出非法 JSON。
+14. focusPoints 仅保留真正与分析目标相关的关注点。
 
 下面是 AgentResolutionResult 的 JSON Schema：
 {schema_json}
 
-下面是一个合法示例：
-{example_json}
+下面是几个合法示例：
+
+need_confirm 示例：
+{need_confirm_example_json}
+
+resolved 示例：
+{resolved_example_json}
+
+failed 示例：
+{failed_example_json}
+
+unsupported 示例：
+{unsupported_example_json}
+
+再次强调：
+- 最终答案只能是一个 JSON 对象。
+- 不要重复工具结果。
+- 不要解释你的推理。
+- 不要输出任何对象之外的字符。
 """
 
 _FINAL_OUTPUT_PROMPT_PARTIALS = {
     "schema_json": json.dumps(
         AgentResolutionResult.model_json_schema(), ensure_ascii=False, indent=2
     ),
-    "example_json": json.dumps(_FINAL_OUTPUT_EXAMPLE, ensure_ascii=False, indent=2),
+    "need_confirm_example_json": json.dumps(
+        _FINAL_OUTPUT_EXAMPLE, ensure_ascii=False, indent=2
+    ),
+    "resolved_example_json": json.dumps(
+        _FINAL_OUTPUT_RESOLVED_EXAMPLE, ensure_ascii=False, indent=2
+    ),
+    "failed_example_json": json.dumps(
+        _FINAL_OUTPUT_FAILED_EXAMPLE, ensure_ascii=False, indent=2
+    ),
+    "unsupported_example_json": json.dumps(
+        _FINAL_OUTPUT_UNSUPPORTED_EXAMPLE, ensure_ascii=False, indent=2
+    ),
 }
 
 
@@ -161,8 +233,21 @@ class ResolutionAgent:
         tool_llm = llm.bind_tools(tools)
 
         for _ in range(_MAX_TOOL_ROUNDS + 1):
+            append_runtime_user_trace(
+                phase="resolution",
+                event="llm_input",
+                inputPhase="tool_reasoning",
+                inputPreview=_build_llm_input_preview(history),
+            )
             ai_message = tool_llm.invoke(history)
             history.append(ai_message)
+            append_runtime_user_trace(
+                phase="resolution",
+                event="llm_output",
+                outputPhase="tool_reasoning",
+                outputPreview=_extract_text(ai_message),
+                toolCallCount=len(getattr(ai_message, "tool_calls", None) or []),
+            )
             if not getattr(ai_message, "tool_calls", None):
                 break
             for tool_call in ai_message.tool_calls[:2]:
@@ -186,10 +271,22 @@ class ResolutionAgent:
         )
         final_prompt = final_prompt.partial(**_FINAL_OUTPUT_PROMPT_PARTIALS)
         final_messages = final_prompt.format_messages(history=history)
+        append_runtime_user_trace(
+            phase="resolution",
+            event="llm_input",
+            inputPhase="final_output",
+            inputPreview=_build_llm_input_preview(final_messages, max_chars=1200),
+        )
         final_llm = llm.bind(
             response_format={"type": "json_object"},
         )
         final_response = final_llm.invoke(final_messages)
+        append_runtime_user_trace(
+            phase="resolution",
+            event="llm_output",
+            outputPhase="final_output",
+            outputPreview=_extract_text(final_response),
+        )
         result = _parse_agent_resolution_result(final_response)
         return _normalize_agent_result(result)
 
@@ -343,3 +440,29 @@ def _build_failed_result(message: str) -> AgentResolutionResult:
         shouldCreateAnalysisTask=False,
         terminate=True,
     )
+
+
+def _build_llm_input_preview(value: Any, max_chars: int = 800) -> str:
+    text = _extract_text(value).strip()
+    if len(text) <= max_chars:
+        return text
+    return text[:max_chars] + "...[truncated]"
+
+
+def _extract_text(response: Any) -> str:
+    content = getattr(response, "content", "") if response else response
+    if isinstance(content, list):
+        text_parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                text_parts.append(item.get("text", ""))
+            elif isinstance(item, str):
+                text_parts.append(item)
+            else:
+                text_parts.append(str(item))
+        return "\n".join(part for part in text_parts if part).strip()
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, dict):
+        return json.dumps(content, ensure_ascii=False)
+    return str(content).strip()

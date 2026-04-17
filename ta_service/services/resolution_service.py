@@ -23,6 +23,7 @@ from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.runtime.trace_scopes import build_resolution_trace_dir, runtime_trace_scope
+from ta_service.runtime.user_trace import append_user_trace
 from ta_service.services.analysis_service import AnalysisService
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.resolution_agent import ResolutionAgent
@@ -63,11 +64,13 @@ class ResolutionService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         message: str,
     ) -> ResolutionResponse:
         prepared = self._prepare_resolution(
             user_id=user_id,
+            username=username,
             conversation_id=conversation_id,
             message=message,
         )
@@ -81,11 +84,13 @@ class ResolutionService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         message: str,
     ) -> Iterator[dict[str, object]]:
         prepared = self._prepare_resolution(
             user_id=user_id,
+            username=username,
             conversation_id=conversation_id,
             message=message,
         )
@@ -127,9 +132,22 @@ class ResolutionService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         payload: ResolutionConfirmRequest,
     ) -> ResolutionResponse:
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="resolution",
+            event="user_input",
+            settings=self.analysis_service.settings,
+            action=payload.action,
+            resolutionId=payload.resolutionId,
+            ticker=payload.ticker,
+            messageType="resolution_confirm",
+        )
         conversation = self._get_conversation(user_id=user_id, conversation_id=conversation_id)
         pending = _parse_pending_snapshot(conversation.get("pendingResolution"))
         if not pending or pending.resolutionId != payload.resolutionId:
@@ -158,6 +176,18 @@ class ResolutionService:
                 pending_resolution=None,
                 confirmed_stock=None,
                 confirmed_analysis_prompt=None,
+            )
+            append_user_trace(
+                user_id=user_id,
+                username=username,
+                conversation_id=conversation_id,
+                phase="resolution",
+                event="assistant_reply",
+                settings=self.analysis_service.settings,
+                resolutionId=payload.resolutionId,
+                status="collect_more",
+                messageType=MessageType.TICKER_RESOLUTION,
+                reply=assistant_reply,
             )
             return ResolutionResponse(
                 resolutionId=payload.resolutionId,
@@ -200,11 +230,26 @@ class ResolutionService:
             payload.resolutionId,
             selected_stock.ticker,
         )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="resolution",
+            event="assistant_reply",
+            settings=self.analysis_service.settings,
+            resolutionId=payload.resolutionId,
+            status="resolved",
+            messageType=MessageType.TICKER_RESOLUTION,
+            reply=assistant_reply,
+            ticker=selected_stock.ticker,
+            name=selected_stock.name,
+        )
 
         conversation_status = "ready_to_analyze"
         task_progress = None
         task_doc = self._try_launch_analysis(
             user_id=user_id,
+            username=username,
             conversation_id=conversation_id,
             ticker=selected_stock.ticker,
             prompt=pending.analysisPrompt,
@@ -233,6 +278,7 @@ class ResolutionService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         ticker: str,
         prompt: str,
@@ -257,6 +303,7 @@ class ResolutionService:
         try:
             task_doc = self.analysis_service.launch_analysis(
                 user_id=user_id,
+                username=username,
                 conversation_id=conversation_id,
                 ticker=ticker,
                 trade_date=trade_date,
@@ -283,6 +330,7 @@ class ResolutionService:
         self,
         *,
         user_id: str,
+        username: str,
         conversation_id: str,
         message: str,
     ) -> dict:
@@ -302,8 +350,21 @@ class ResolutionService:
             message_type=MessageType.TEXT,
             content=current_message,
         )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="resolution",
+            event="user_input",
+            settings=self.analysis_service.settings,
+            message=current_message,
+            round=round_number,
+            resolutionId=resolution_id,
+            pendingStatus=existing_pending.status if existing_pending else None,
+        )
         return {
             "current_message": current_message,
+            "username": username,
             "existing_pending": existing_pending,
             "round_number": round_number,
             "resolution_id": resolution_id,
@@ -319,6 +380,7 @@ class ResolutionService:
         prepared: dict,
     ) -> ResolutionResponse:
         current_message = cast(str, prepared["current_message"])
+        username = cast(str, prepared["username"])
         existing_pending = cast(PendingResolutionSnapshot | None, prepared["existing_pending"])
         round_number = cast(int, prepared["round_number"])
         resolution_id = cast(str, prepared["resolution_id"])
@@ -343,6 +405,8 @@ class ResolutionService:
             with runtime_trace_scope(
                 run_id=f"resolution-{resolution_id[:12]}",
                 trace_dir=str(resolution_trace_dir),
+                user_id=user_id,
+                username=username,
                 conversation_id=conversation_id,
                 resolution_id=resolution_id,
                 trace_kind="resolution",
@@ -403,12 +467,29 @@ class ResolutionService:
             result.status,
             len(result.candidates),
         )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="resolution",
+            event="assistant_reply",
+            settings=self.analysis_service.settings,
+            resolutionId=resolution_id,
+            round=round_number,
+            status=result.status,
+            messageType=MessageType.TICKER_RESOLUTION,
+            reply=result.assistantReply,
+            ticker=result.stock.ticker if result.stock else None,
+            name=result.stock.name if result.stock else None,
+            candidateCount=len(result.candidates),
+        )
 
         task_progress = None
         if result.status == "resolved" and confirmed_stock:
             ticker = confirmed_stock.get("ticker", "")
             task_doc = self._try_launch_analysis(
                 user_id=user_id,
+                username=username,
                 conversation_id=conversation_id,
                 ticker=ticker,
                 prompt=analysis_prompt,

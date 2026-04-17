@@ -130,6 +130,7 @@ def resolve_conversation_message(
 ) -> ResolutionResponse:
     return resolution_service.resolve_message(
         user_id=current_user.id,
+        username=current_user.username,
         conversation_id=conversation_id,
         message=payload.message,
     )
@@ -146,6 +147,7 @@ def stream_resolve_conversation_message(
         try:
             for item in resolution_service.stream_resolve_message(
                 user_id=current_user.id,
+                username=current_user.username,
                 conversation_id=conversation_id,
                 message=payload.message,
             ):
@@ -177,6 +179,7 @@ def confirm_conversation_resolution(
 ) -> ResolutionResponse:
     return resolution_service.confirm_resolution(
         user_id=current_user.id,
+        username=current_user.username,
         conversation_id=conversation_id,
         payload=payload,
     )

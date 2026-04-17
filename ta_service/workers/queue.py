@@ -11,6 +11,7 @@ from ta_service.config.settings import Settings
 class AnalysisJob:
     taskId: str
     userId: str
+    username: str | None
     conversationId: str
     ticker: str
     tradeDate: str
@@ -31,6 +32,7 @@ class AnalysisJobQueue:
         return AnalysisJob(
             taskId=document["taskId"],
             userId=document["userId"],
+            username=document.get("username"),
             conversationId=document["conversationId"],
             ticker=document["symbol"],
             tradeDate=document["tradeDate"],

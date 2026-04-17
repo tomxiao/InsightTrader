@@ -101,7 +101,7 @@ class FakeAnalysisService:
             return None
         return {**self.task, "taskId": task_id}
 
-    def create_task(self, *, user_id: str, payload):
+    def create_task(self, *, user_id: str, username: str, payload):
         return {
             **self.task,
             "symbol": payload.ticker,
@@ -271,15 +271,15 @@ class FakeResolutionService:
             {"event": "completed", "response": self.resolve_result},
         ]
 
-    def resolve_message(self, *, user_id: str, conversation_id: str, message: str):
+    def resolve_message(self, *, user_id: str, username: str, conversation_id: str, message: str):
         return self.resolve_result
 
     def stream_resolve_message(
-        self, *, user_id: str, conversation_id: str, message: str
+        self, *, user_id: str, username: str, conversation_id: str, message: str
     ) -> Iterator[dict[str, object]]:
         yield from self.stream_result
 
-    def confirm_resolution(self, *, user_id: str, conversation_id: str, payload):
+    def confirm_resolution(self, *, user_id: str, username: str, conversation_id: str, payload):
         return self.confirm_result
 
 

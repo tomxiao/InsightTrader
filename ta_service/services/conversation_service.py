@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import json
 import logging
-import re
-from datetime import datetime
 from pathlib import Path
 from typing import Iterator
 from uuid import uuid4
@@ -28,6 +25,7 @@ from ta_service.repos.analysis_tasks import AnalysisTaskRepository
 from ta_service.repos.conversations import ConversationRepository
 from ta_service.repos.messages import MessageRepository
 from ta_service.runtime.trace_scopes import build_reply_trace_dir, runtime_trace_scope
+from ta_service.runtime.user_trace import append_user_trace
 from ta_service.services.conversation_state_machine import ConversationStateMachine
 from ta_service.services.report_context_loader import ReportContextLoader
 from ta_service.services.team_report_insight_agent import TeamReportInsightAgent
@@ -141,8 +139,20 @@ class ConversationService:
             message_type=MessageType.TEXT,
             content=message.strip(),
         )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="insight_reply",
+            event="user_input",
+            settings=self.settings,
+            message=message.strip(),
+            messageType=MessageType.TEXT,
+        )
 
         insight_context = self._build_insight_context(
+            user_id=user_id,
+            username=username,
             conversation=conversation,
             all_messages=all_messages,
             question=message.strip(),
@@ -161,20 +171,25 @@ class ConversationService:
             user_id=user_id,
             to_status="report_explaining",
         )
-        self._write_insight_reply_audit_log(
+        append_user_trace(
+            user_id=user_id,
             username=username,
-            conversation=conversation,
-            context=insight_context,
-            question=message.strip(),
-            answer=result.answer,
-            source_sections=result.source_sections,
-            routing_intent=result.routing_intent,
-            routing_primary_section=result.routing_primary_section,
-            routing_fallback_sections=result.routing_fallback_sections,
-            routing_reason=result.routing_reason,
-            is_answerable=result.is_answerable,
-            llm_router_ms=result.llm_router_ms,
-            llm_reply_ms=result.llm_reply_ms,
+            conversation_id=conversation_id,
+            phase="insight_reply",
+            event="assistant_reply",
+            settings=self.settings,
+            replyId=insight_context.reply_id,
+            teamId=insight_context.team_id,
+            messageType=MessageType.INSIGHT_REPLY,
+            reply=result.answer,
+            sourceSections=result.source_sections,
+            routingIntent=result.routing_intent,
+            routingPrimarySection=result.routing_primary_section,
+            routingFallbackSections=result.routing_fallback_sections,
+            routingReason=result.routing_reason,
+            isAnswerable=result.is_answerable,
+            llmRouterMs=result.llm_router_ms,
+            llmReplyMs=result.llm_reply_ms,
         )
         return PostConversationMessageResponse(
             messages=[build_message(user_message), build_message(assistant_message)],
@@ -217,7 +232,19 @@ class ConversationService:
             message_type=MessageType.TEXT,
             content=message.strip(),
         )
+        append_user_trace(
+            user_id=user_id,
+            username=username,
+            conversation_id=conversation_id,
+            phase="insight_reply",
+            event="user_input",
+            settings=self.settings,
+            message=message.strip(),
+            messageType=MessageType.TEXT,
+        )
         insight_context = self._build_insight_context(
+            user_id=user_id,
+            username=username,
             conversation=conversation,
             all_messages=all_messages,
             question=message.strip(),
@@ -256,20 +283,25 @@ class ConversationService:
             user_id=user_id,
             to_status="report_explaining",
         )
-        self._write_insight_reply_audit_log(
+        append_user_trace(
+            user_id=user_id,
             username=username,
-            conversation=conversation,
-            context=insight_context,
-            question=message.strip(),
-            answer=result.answer,
-            source_sections=result.source_sections,
-            routing_intent=result.routing_intent,
-            routing_primary_section=result.routing_primary_section,
-            routing_fallback_sections=result.routing_fallback_sections,
-            routing_reason=result.routing_reason,
-            is_answerable=result.is_answerable,
-            llm_router_ms=result.llm_router_ms,
-            llm_reply_ms=result.llm_reply_ms,
+            conversation_id=conversation_id,
+            phase="insight_reply",
+            event="assistant_reply",
+            settings=self.settings,
+            replyId=insight_context.reply_id,
+            teamId=insight_context.team_id,
+            messageType=MessageType.INSIGHT_REPLY,
+            reply=result.answer,
+            sourceSections=result.source_sections,
+            routingIntent=result.routing_intent,
+            routingPrimarySection=result.routing_primary_section,
+            routingFallbackSections=result.routing_fallback_sections,
+            routingReason=result.routing_reason,
+            isAnswerable=result.is_answerable,
+            llmRouterMs=result.llm_router_ms,
+            llmReplyMs=result.llm_reply_ms,
         )
         yield {
             "event": "completed",
@@ -279,6 +311,8 @@ class ConversationService:
     def _build_insight_context(
         self,
         *,
+        user_id: str,
+        username: str,
         conversation: dict,
         all_messages: list[dict],
         question: str,
@@ -330,6 +364,8 @@ class ConversationService:
         )
 
         return ReportInsightContext(
+            user_id=user_id,
+            username=username,
             conversation_id=conversation.get("id", ""),
             reply_id=reply_id,
             question=question,
@@ -369,69 +405,12 @@ class ConversationService:
         )
         return [{"role": msg["role"], "content": msg.get("content", "")} for msg in recent]
 
-    def _write_insight_reply_audit_log(
-        self,
-        *,
-        username: str,
-        conversation: dict,
-        context: ReportInsightContext,
-        question: str,
-        answer: str,
-        source_sections: list[str],
-        routing_intent: str | None,
-        routing_primary_section: str | None,
-        routing_fallback_sections: list[str],
-        routing_reason: str | None,
-        is_answerable: bool,
-        llm_router_ms: float | None,
-        llm_reply_ms: float | None,
-    ) -> None:
-        try:
-            user_log_dir = self.settings.logs_root / _sanitize_username(username)
-            user_log_dir.mkdir(parents=True, exist_ok=True)
-            log_path = user_log_dir / "insight_reply.jsonl"
-            report_dir = _resolve_report_dir_from_trace_dir(
-                trace_dir=context.trace_dir,
-                reports_root=self.settings.reports_root,
-            )
-            payload = {
-                "timestamp": datetime.now().isoformat(timespec="seconds"),
-                "username": username,
-                "conversation_title": conversation.get("title") or "",
-                "conversation_id": context.conversation_id,
-                "reply_id": context.reply_id,
-                "ticker": context.ticker,
-                "trade_date": context.trade_date,
-                "team_id": context.team_id,
-                "report_dir": str(report_dir) if report_dir else None,
-                "trace_dir": context.trace_dir,
-                "reply_trace_dir": context.reply_trace_dir,
-                "user_input": question,
-                "gating": {
-                    "intent": routing_intent,
-                    "primary_section": routing_primary_section,
-                    "fallback_sections": routing_fallback_sections,
-                    "reason": routing_reason,
-                },
-                "source_sections": source_sections,
-                "is_answerable": is_answerable,
-                "llm_router_ms": llm_router_ms,
-                "llm_reply_ms": llm_reply_ms,
-                "reply": answer,
-            }
-            with log_path.open("a", encoding="utf-8") as handle:
-                handle.write(json.dumps(payload, ensure_ascii=False) + "\n")
-        except Exception as exc:
-            logger.warning(
-                "post_message: failed to write insight reply audit log conversation_id=%s error=%s",
-                context.conversation_id,
-                exc,
-            )
-
     def _reply_trace_scope(self, *, context: ReportInsightContext):
         return runtime_trace_scope(
             run_id=f"reply-{context.reply_id[:12]}",
             trace_dir=context.reply_trace_dir or "",
+            user_id=context.user_id,
+            username=context.username,
             conversation_id=context.conversation_id,
             reply_id=context.reply_id,
             trace_kind="reply",
@@ -442,11 +421,6 @@ class ConversationService:
             current_stage_id="reply.answer",
             current_node_id="Reply Agent",
         )
-
-
-def _sanitize_username(username: str) -> str:
-    value = (username or "").strip() or "unknown_user"
-    return re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", value)
 
 
 def _resolve_report_dir_from_trace_dir(*, trace_dir: str | None, reports_root: Path) -> Path | None:

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from zoneinfo import ZoneInfo
 
+from ta_service.runtime.user_trace import append_runtime_user_trace
 from tradingagents.dataflows.config import get_runtime_context
 
 SCHEMA_VERSION = 1
@@ -197,6 +198,17 @@ def _classify_llm_input(llm_input: Any) -> str:
     return llm_input.__class__.__name__
 
 
+def _resolve_user_trace_phase(runtime_context: Dict[str, Any]) -> str:
+    stage_id = str(runtime_context.get("current_stage_id") or runtime_context.get("stage_id") or "")
+    run_id = str(runtime_context.get("run_id") or "")
+
+    if stage_id.startswith("resolution.") or run_id.startswith("resolution-"):
+        return "resolution"
+    if stage_id.startswith("reply.") or run_id.startswith("reply-"):
+        return "insight_reply"
+    return "analysis_task"
+
+
 def persist_research_debate_llm_input(
     llm_input: Any,
     *,
@@ -241,6 +253,7 @@ def emit_llm_event(
     event: str,
     *,
     llm_input: Any = None,
+    llm_output: Any = None,
     duration_ms: Optional[int] = None,
     config: Optional[Dict[str, Any]] = None,
     runtime_context: Optional[Dict[str, Any]] = None,
@@ -274,17 +287,43 @@ def emit_llm_event(
     if duration_ms is not None:
         payload["duration_ms"] = duration_ms
 
+    if llm_output is not None:
+        payload["output_preview"] = _build_llm_input_preview(llm_output)
+        payload["output_chars"] = len(_extract_llm_text(llm_output))
+
     if error is not None:
         payload["error_code"] = error.__class__.__name__
         payload["error_message"] = str(error)
 
-    return emit_trace_event(
+    trace_event = emit_trace_event(
         LLM_TRACE_FILENAME,
         event,
         config=config,
         runtime_context=merged_runtime_context,
         **payload,
     )
+    if merged_runtime_context.get("user_id") and merged_runtime_context.get("conversation_id"):
+        user_payload: Dict[str, Any] = {
+            "runId": merged_runtime_context.get("run_id"),
+            "stageId": merged_runtime_context.get("current_stage_id"),
+            "nodeId": merged_runtime_context.get("current_node_id"),
+            "provider": provider,
+            "model": model,
+        }
+        if llm_input is not None:
+            user_payload["inputPreview"] = _build_llm_input_preview(llm_input, max_chars=1200)
+        if llm_output is not None:
+            user_payload["outputPreview"] = _build_llm_input_preview(llm_output, max_chars=1200)
+        if duration_ms is not None:
+            user_payload["durationMs"] = duration_ms
+        if error is not None:
+            user_payload["errorMessage"] = str(error)
+        append_runtime_user_trace(
+            phase=_resolve_user_trace_phase(merged_runtime_context),
+            event=event,
+            **user_payload,
+        )
+    return trace_event
 
 
 def emit_trace_event(

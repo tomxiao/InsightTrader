@@ -48,6 +48,8 @@ const skipAutoStickMessageId = ref<string | null>(null)
 const keyboardOffset = ref(0)
 const composerFocused = ref(false)
 let composerBlurTimer = 0
+let conversationItemClickTimer = 0
+let lastConversationItemTap = { id: '', at: 0 }
 
 const currentConversation = computed(() => conversationStore.currentConversation)
 const rawMessages = computed(() => conversationStore.currentMessages)
@@ -615,6 +617,25 @@ const openConversation = async (conversationId: string) => {
   }
 }
 
+const handleConversationItemClick = (conversationId: string) => {
+  const now = Date.now()
+  const isDoubleTap =
+    lastConversationItemTap.id === conversationId && now - lastConversationItemTap.at < 320
+
+  lastConversationItemTap = { id: conversationId, at: now }
+
+  if (isDoubleTap) {
+    window.clearTimeout(conversationItemClickTimer)
+    void copyConversationId(conversationId)
+    return
+  }
+
+  window.clearTimeout(conversationItemClickTimer)
+  conversationItemClickTimer = window.setTimeout(() => {
+    void openConversation(conversationId)
+  }, 220)
+}
+
 const deleteConversation = async (conversationId: string) => {
   try {
     await conversationsApi.deleteConversation(conversationId)
@@ -681,6 +702,38 @@ useDrawerPolling()
 
 const quickFill = (prompt: string) => {
   promptModel.value = prompt
+}
+
+const copyConversationId = async (conversationId: string) => {
+  try {
+    if (navigator?.clipboard?.writeText) {
+      await navigator.clipboard.writeText(conversationId)
+      showToast('会话 ID 已复制')
+      return
+    }
+
+    const textarea = document.createElement('textarea')
+    textarea.value = conversationId
+    textarea.setAttribute('readonly', 'true')
+    textarea.style.position = 'fixed'
+    textarea.style.opacity = '0'
+    textarea.style.pointerEvents = 'none'
+    textarea.style.left = '-9999px'
+    document.body.appendChild(textarea)
+    textarea.focus()
+    textarea.select()
+    textarea.setSelectionRange(0, conversationId.length)
+
+    const copied = document.execCommand('copy')
+    document.body.removeChild(textarea)
+    if (!copied) {
+      throw new Error('copy command failed')
+    }
+
+    showToast('会话 ID 已复制')
+  } catch {
+    showToast('复制失败，请检查浏览器剪贴板权限')
+  }
 }
 
 const getConversationStatusLabel = (status: ConversationSummary['status']) =>
@@ -1080,6 +1133,8 @@ onUnmounted(() => {
   if (typeof window === 'undefined') return
 
   window.clearTimeout(composerBlurTimer)
+  window.clearTimeout(conversationItemClickTimer)
+  lastConversationItemTap = { id: '', at: 0 }
   window.visualViewport?.removeEventListener('resize', updateKeyboardOffset)
   window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset)
 })
@@ -1140,7 +1195,7 @@ onUnmounted(() => {
                 :key="item.id"
                 class="conversation-drawer__item"
                 :class="{ 'is-active': item.id === currentConversation.id }"
-                @click="openConversation(item.id)"
+                @click="handleConversationItemClick(item.id)"
               >
                 <div class="conversation-drawer__item-body">
                   <div class="conversation-drawer__item-head">

@@ -30,4 +30,8 @@ def create_task(
     current_user: MobileUser = Depends(get_current_user),
     analysis_service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalysisTaskStatusResponse:
-    return analysis_service.create_task(user_id=current_user.id, payload=payload)
+    return analysis_service.create_task(
+        user_id=current_user.id,
+        username=current_user.username,
+        payload=payload,
+    )

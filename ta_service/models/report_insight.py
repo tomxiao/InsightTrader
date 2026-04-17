@@ -8,6 +8,8 @@ from ta_service.teams import DEFAULT_TEAM_ID
 class ReportInsightContext(BaseModel):
     """传递给 ReportInsightAgent 的输入上下文。"""
 
+    user_id: str = ""
+    username: str = ""
     conversation_id: str = ""
     reply_id: str = ""
     question: str
