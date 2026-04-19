@@ -27,7 +27,10 @@ import type {
   ResolutionResponse,
   ResolutionStatus,
 } from '@/types/resolution'
+import { conversationStatusLabelMap, getConversationStatusLabel } from '@utils/conversationStatus'
+import { resolveUserErrorMessage } from '@utils/errorMessage'
 import { formatConversationGroup, formatSeconds, formatTimeLabel } from '@utils/format'
+import { showErrorToast } from '@utils/toast'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -188,26 +191,6 @@ const suggestedPrompts = [
   '帮我看下Apple'
 ]
 
-const conversationStatusLabelMap: Record<ConversationSummary['status'], string> = {
-  idle: '待开始',
-  collecting_inputs: '补充信息中',
-  ready_to_analyze: '可发起分析',
-  analyzing: '分析中',
-  report_ready: '报告已生成',
-  report_explaining: '继续解读中',
-  failed: '需要重试'
-}
-
-const conversationHeaderSubtitleMap: Record<ConversationSummary['status'], string> = {
-  idle: '输入标的后开始分析',
-  collecting_inputs: '补充信息后继续',
-  ready_to_analyze: '可以开始分析',
-  analyzing: '正在分析',
-  report_ready: '可继续追问',
-  report_explaining: '继续解读',
-  failed: '分析未完成'
-}
-
 const isFollowupMode = computed(() =>
   ['report_ready', 'report_explaining'].includes(currentConversation.value.status)
 )
@@ -218,7 +201,7 @@ const canSubmitPrompt = computed(() =>
 
 
 const currentConversationStatusLabel = computed(
-  () => conversationHeaderSubtitleMap[currentConversation.value.status] || '输入标的后开始分析'
+  () => conversationStatusLabelMap[currentConversation.value.status] || '处理中'
 )
 
 const accountDisplayName = computed(() => authStore.user?.displayName || authStore.user?.username || '未登录')
@@ -274,7 +257,7 @@ const bootstrap = async () => {
       await loadConversation(preferredId)
     }
   } catch (error) {
-    showToast((error as Error).message || '初始化会话失败')
+    showErrorToast(resolveUserErrorMessage(error, 'conversation-bootstrap'))
   } finally {
     conversationStore.setLoading(false)
   }
@@ -428,7 +411,11 @@ const handleStreamEvent = ({
   if (event.event === 'error') {
     conversationStore.removeMessageById(thinkingId)
     conversationStore.removeMessageById(streamingAssistantId)
-    throw new Error(event.message || '流式回复失败，请稍后再试')
+    throw {
+      message: '流式回复失败，请稍后再试',
+      detail: event.message,
+      status: event.status_code,
+    }
   }
 }
 
@@ -495,7 +482,11 @@ const handleResolutionStreamEvent = ({
   if (event.event === 'error') {
     conversationStore.removeMessageById(thinkingId)
     conversationStore.removeMessageById(streamingAssistantId)
-    throw new Error(event.message || '流式识别失败，请稍后再试')
+    throw {
+      message: '流式识别失败，请稍后再试',
+      detail: event.message,
+      status: event.status_code,
+    }
   }
 
   return null
@@ -514,9 +505,9 @@ const submitResolutionAction = async (action: ResolutionAction, resolutionId: st
   } catch (error) {
     if (axios.isAxiosError(error) && error.response?.status === 409) {
       await loadConversation(currentConversation.value.id)
-      showToast('状态已更新，请根据最新状态操作')
+      showErrorToast('状态已更新，请根据最新状态操作')
     } else {
-      showToast((error as Error).message || '操作失败，请稍后再试')
+      showErrorToast(resolveUserErrorMessage(error, 'conversation-resolution-action'))
     }
   } finally {
     resolutionActionLoading.value = false
@@ -533,7 +524,7 @@ const submitPrompt = async () => {
     try {
       await createConversation()
     } catch (error) {
-      showToast((error as Error).message || '创建会话失败，请稍后再试')
+      showErrorToast(resolveUserErrorMessage(error, 'conversation-create'))
       sendingLoading.value = false
       return
     }
@@ -635,9 +626,9 @@ const submitPrompt = async () => {
       return
     }
     if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
-      showToast('识别耗时较长，请稍后查看结果或重新发送')
+      showErrorToast('识别耗时较长，请稍后查看结果或重新发送')
     } else {
-      showToast((error as Error).message || '发送失败，请稍后再试')
+      showErrorToast(resolveUserErrorMessage(error, 'conversation-send'))
     }
   } finally {
     if (activeStreamController.value === streamController) {
@@ -657,7 +648,7 @@ const openConversation = async (conversationId: string) => {
     conversationStore.setDrawerOpen(false)
     accountMenuOpen.value = false
   } catch (error) {
-    showToast((error as Error).message || '加载会话失败')
+    showErrorToast(resolveUserErrorMessage(error, 'conversation-load'))
   }
 }
 
@@ -684,7 +675,7 @@ const deleteConversation = async (conversationId: string) => {
   try {
     await conversationsApi.deleteConversation(conversationId)
   } catch (error) {
-    showToast((error as Error).message || '删除会话失败')
+    showErrorToast(resolveUserErrorMessage(error, 'conversation-delete'))
     return
   }
 
@@ -696,13 +687,13 @@ const deleteConversation = async (conversationId: string) => {
       try {
         await loadConversation(remaining[0].id)
       } catch (error) {
-        showToast((error as Error).message || '加载会话失败')
+        showErrorToast(resolveUserErrorMessage(error, 'conversation-load'))
       }
     } else {
       try {
         await createConversation()
       } catch (error) {
-        showToast((error as Error).message || '创建会话失败，请稍后再试')
+        showErrorToast(resolveUserErrorMessage(error, 'conversation-create'))
       }
     }
   }
@@ -776,12 +767,9 @@ const copyConversationId = async (conversationId: string) => {
 
     showToast('会话 ID 已复制')
   } catch {
-    showToast('复制失败，请检查浏览器剪贴板权限')
+    showErrorToast('复制失败，请检查浏览器剪贴板权限')
   }
 }
-
-const getConversationStatusLabel = (status: ConversationSummary['status']) =>
-  conversationStatusLabelMap[status] || '处理中'
 
 const getMessageText = (message: ConversationMessage) => {
   if (typeof message.content === 'string') return message.content
@@ -903,6 +891,13 @@ const getCurrentTaskTimelineItems = () => getTaskStatusTimelineItems().filter(it
 
 const getTaskProgressItems = (): TaskProgressItem[] => {
   if (taskProgress.value?.tasks?.length) {
+    const state = getTaskStatusState()
+    if (state === 'failed') {
+      return taskProgress.value.tasks.map(item => ({
+        ...item,
+        status: item.status === 'completed' ? 'completed' : 'failed',
+      }))
+    }
     return taskProgress.value.tasks
   }
   return getTaskStatusTimelineItems().map(item => ({
@@ -2509,6 +2504,8 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+  padding-right: 12px;
+  scrollbar-gutter: stable;
 }
 
 .conversation-drawer__group {
@@ -2526,8 +2523,11 @@ onUnmounted(() => {
 .conversation-drawer__item {
   display: flex;
   flex-direction: row;
-  align-items: center;
-  gap: 8px;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  box-sizing: border-box;
+  width: 100%;
   padding: 12px;
   border: 1px solid var(--mobile-color-border);
   border-radius: 16px;
@@ -2549,6 +2549,7 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  padding-right: 2px;
 }
 
 .conversation-drawer__item-head {
@@ -2571,8 +2572,9 @@ onUnmounted(() => {
 
 .conversation-drawer__item-delete {
   flex-shrink: 0;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
+  align-self: center;
   padding: 0;
   border: 0;
   border-radius: 8px;

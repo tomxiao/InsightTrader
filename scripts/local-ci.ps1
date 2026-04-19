@@ -3,6 +3,19 @@ $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 Set-Location $repoRoot
+$venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
+if (-not (Test-Path $venvPython)) {
+  throw "Project virtualenv python not found: $venvPython"
+}
+
+function Invoke-Python {
+  param(
+    [Parameter(ValueFromRemainingArguments = $true)]
+    [string[]]$Args
+  )
+
+  & $venvPython @Args
+}
 
 function Invoke-Step {
   param(
@@ -16,7 +29,7 @@ function Invoke-Step {
 }
 
 Invoke-Step -Title "Backend py_compile" -Action {
-  python -m py_compile `
+  Invoke-Python -m py_compile `
     ta_service/main.py `
     ta_service/app/factory.py `
     ta_service/api/routes/auth.py `
@@ -33,11 +46,11 @@ Invoke-Step -Title "Backend py_compile" -Action {
 }
 
 Invoke-Step -Title "Backend app import" -Action {
-  python -c "from ta_service.main import app; print('backend app import ok')"
+  Invoke-Python -c "from ta_service.main import app; print('backend app import ok')"
 }
 
 Invoke-Step -Title "ta_service API contract tests" -Action {
-  pytest tests/ta_service_api -q
+  Invoke-Python -m pytest tests/ta_service_api -q
 }
 
 Invoke-Step -Title "Frontend type-check" -Action {

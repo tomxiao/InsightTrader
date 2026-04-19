@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import logging
 from pathlib import Path
 from typing import Iterator
@@ -78,10 +79,15 @@ class ConversationService:
         )
         if not document:
             return None
-        messages = self.message_repo.list_for_conversation(conversation_id)
         task_doc: dict | None = None
         if document.get("currentTaskId"):
             task_doc = self.task_repo.get_by_task_id(document["currentTaskId"])
+        document, task_doc = self._reconcile_timed_out_analysis(
+            user_id=user_id,
+            conversation=document,
+            task_doc=task_doc,
+        )
+        messages = self.message_repo.list_for_conversation(conversation_id)
         return build_conversation_detail(document, messages, task_doc)
 
     def delete_conversation(self, *, user_id: str, conversation_id: str) -> None:
@@ -422,8 +428,80 @@ class ConversationService:
             current_node_id="Reply Agent",
         )
 
+    def _reconcile_timed_out_analysis(
+        self,
+        *,
+        user_id: str,
+        conversation: dict,
+        task_doc: dict | None,
+    ) -> tuple[dict, dict | None]:
+        if conversation.get("status") != "analyzing" or not task_doc:
+            return conversation, task_doc
+
+        if task_doc.get("status") not in {"queued", "pending", "running", "processing"}:
+            return conversation, task_doc
+
+        updated_at = _parse_iso_datetime(task_doc.get("updatedAt"))
+        if not updated_at:
+            return conversation, task_doc
+
+        cutoff = datetime.now(timezone.utc) - timedelta(
+            seconds=self.settings.analysis_task_ttl_seconds
+        )
+        if updated_at > cutoff:
+            return conversation, task_doc
+
+        logger.warning(
+            "conversation_read_timeout_reconciled conversation_id=%s task_id=%s task_status=%s updated_at=%s ttl_seconds=%s",
+            conversation.get("id"),
+            task_doc.get("taskId"),
+            task_doc.get("status"),
+            task_doc.get("updatedAt"),
+            self.settings.analysis_task_ttl_seconds,
+        )
+        self.task_repo.update_status(
+            task_doc["taskId"],
+            status="failed",
+            currentStep="分析执行超时",
+            message="分析任务长时间未更新，已标记为失败，请重新发起分析请求。",
+        )
+        self.state_machine.transition(
+            conversation_id=conversation["id"],
+            user_id=user_id,
+            to_status="failed",
+            task_id=task_doc["taskId"],
+        )
+        self.message_repo.create(
+            conversation_id=conversation["id"],
+            role="system",
+            message_type=MessageType.ERROR,
+            content={"text": "分析任务已超时，请重新发起分析请求。"},
+        )
+
+        next_conversation = {
+            **conversation,
+            "status": "failed",
+            "currentTaskId": task_doc["taskId"],
+        }
+        next_task_doc = {
+            **task_doc,
+            "status": "failed",
+            "currentStep": "分析执行超时",
+            "message": "分析任务长时间未更新，已标记为失败，请重新发起分析请求。",
+        }
+        return next_conversation, next_task_doc
+
 
 def _resolve_report_dir_from_trace_dir(*, trace_dir: str | None, reports_root: Path) -> Path | None:
     if not trace_dir:
         return None
     return reports_root / Path(trace_dir).name
+
+
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None

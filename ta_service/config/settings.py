@@ -23,7 +23,7 @@ class Settings:
 
     redis_url: str = os.getenv("TA_SERVICE_REDIS_URL", "redis://localhost:6379/0")
     redis_queue_key: str = os.getenv("TA_SERVICE_REDIS_QUEUE_KEY", "ta_service:analysis:queue")
-    analysis_task_ttl_seconds: int = int(os.getenv("TA_SERVICE_ANALYSIS_TASK_TTL_SECONDS", "7200"))
+    analysis_task_ttl_seconds: int = int(os.getenv("TA_SERVICE_ANALYSIS_TASK_TTL_SECONDS", "180"))
 
     results_root: Path = Path(os.getenv("TA_SERVICE_RESULTS_DIR", "./results/analysis"))
     reports_root: Path = Path(os.getenv("TA_SERVICE_REPORTS_DIR", "./reports"))

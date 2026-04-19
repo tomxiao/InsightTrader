@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -47,21 +48,35 @@ class FakeMessageRepo:
 class FakeTaskRepo:
     def __init__(self, task_doc: dict | None):
         self.task_doc = task_doc
+        self.updated_statuses: list[dict] = []
 
     def get_by_task_id(self, task_id: str) -> dict | None:
         return self.task_doc
+
+    def update_status(self, task_id: str, **fields) -> None:
+        self.updated_statuses.append({"task_id": task_id, **fields})
+        if self.task_doc and self.task_doc.get("taskId") == task_id:
+            self.task_doc.update(fields)
 
 
 class FakeStateMachine:
     def __init__(self):
         self.transitions: list[dict] = []
 
-    def transition(self, *, conversation_id: str, user_id: str, to_status: str) -> None:
+    def transition(
+        self,
+        *,
+        conversation_id: str,
+        user_id: str,
+        to_status: str,
+        task_id=None,
+    ) -> None:
         self.transitions.append(
             {
                 "conversation_id": conversation_id,
                 "user_id": user_id,
                 "to_status": to_status,
+                "task_id": task_id,
             }
         )
 
@@ -229,3 +244,58 @@ def test_append_user_trace_falls_back_to_unknown_when_username_missing(tmp_path:
     assert record["conversationId"] == "conv-unknown"
     assert record["phase"] == "resolution"
     assert record["event"] == "user_input"
+
+
+def test_get_conversation_reconciles_timed_out_analysis_to_failed(tmp_path: Path) -> None:
+    conversation = {
+        "id": "conv-timeout",
+        "userId": "user-1",
+        "title": "中国平安",
+        "status": "analyzing",
+        "currentTaskId": "task-timeout",
+        "updatedAt": "2026-04-16T00:00:00+00:00",
+    }
+    stale_time = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    task_repo = FakeTaskRepo(
+        {
+            "taskId": "task-timeout",
+            "status": "running",
+            "stageId": "analysts.market",
+            "nodeId": "Market Analyst",
+            "currentStep": "分析中",
+            "message": "分析中",
+            "elapsedTime": 120,
+            "remainingTime": 300,
+            "stageSnapshot": {},
+            "stageTimeline": {},
+            "createdAt": stale_time,
+            "updatedAt": stale_time,
+        }
+    )
+    message_repo = FakeMessageRepo()
+    state_machine = FakeStateMachine()
+    service = ConversationService(
+        conversation_repo=FakeConversationRepo(conversation),
+        message_repo=message_repo,
+        task_repo=task_repo,
+        state_machine=state_machine,
+        settings=SimpleNamespace(
+            analysis_task_ttl_seconds=180,
+            followup_history_turns=6,
+            results_root=tmp_path / "results" / "analysis",
+            logs_root=tmp_path / "logs",
+            reports_root=tmp_path / "reports",
+        ),
+        report_context_loader=FakeReportContextLoader(),
+        report_insight_agent=FakeReportInsightAgent(),
+    )
+
+    detail = service.get_conversation(user_id="user-1", conversation_id="conv-timeout")
+
+    assert detail is not None
+    assert detail.status == "failed"
+    assert detail.taskProgress is not None
+    assert detail.taskProgress.status == "failed"
+    assert task_repo.updated_statuses[-1]["status"] == "failed"
+    assert state_machine.transitions[-1]["to_status"] == "failed"
+    assert message_repo.created[-1]["messageType"] == MessageType.ERROR

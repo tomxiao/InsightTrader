@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any
 
-from langchain_core.messages import ToolMessage
+from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.tools import BaseTool
 from langchain_core.tools import tool
@@ -240,7 +240,6 @@ class ResolutionAgent:
                 inputPreview=_build_llm_input_preview(history),
             )
             ai_message = tool_llm.invoke(history)
-            history.append(ai_message)
             append_runtime_user_trace(
                 phase="resolution",
                 event="llm_output",
@@ -248,6 +247,9 @@ class ResolutionAgent:
                 outputPreview=_extract_text(ai_message),
                 toolCallCount=len(getattr(ai_message, "tool_calls", None) or []),
             )
+            sanitized_ai_message = _sanitize_tool_reasoning_message(ai_message)
+            if sanitized_ai_message is not None:
+                history.append(sanitized_ai_message)
             if not getattr(ai_message, "tool_calls", None):
                 break
             for tool_call in ai_message.tool_calls[:2]:
@@ -440,6 +442,15 @@ def _build_failed_result(message: str) -> AgentResolutionResult:
         shouldCreateAnalysisTask=False,
         terminate=True,
     )
+
+
+def _sanitize_tool_reasoning_message(message: Any) -> AIMessage | None:
+    tool_calls = getattr(message, "tool_calls", None) or []
+    if tool_calls:
+        # Only preserve structured tool-call intent. Natural-language chatter from
+        # intermediate reasoning pollutes subsequent rounds and final JSON output.
+        return AIMessage(content="", tool_calls=tool_calls)
+    return None
 
 
 def _build_llm_input_preview(value: Any, max_chars: int = 800) -> str:

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import axios from 'axios'
 import { onMounted, onUnmounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { showToast } from 'vant'
@@ -7,6 +6,8 @@ import { showToast } from 'vant'
 import { authApi } from '@api/auth'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
 import { useAuthStore } from '@stores/auth'
+import { resolveUserErrorMessage } from '@utils/errorMessage'
+import { showErrorToast } from '@utils/toast'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -75,21 +76,6 @@ onUnmounted(() => {
   document.removeEventListener('focusout', handleFocusOut)
 })
 
-const resolveLoginErrorMessage = (error: unknown) => {
-  if (axios.isAxiosError<{ detail?: string }>(error)) {
-    const detail = error.response?.data?.detail
-    if (typeof detail === 'string' && detail.trim()) {
-      return detail
-    }
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return '登录失败，请稍后重试'
-}
-
 const submit = async () => {
   if (!form.username.trim() || !form.password.trim()) {
     showToast('请输入用户名和密码')
@@ -106,7 +92,7 @@ const submit = async () => {
     showToast('登录成功')
     router.replace({ name: 'Conversation' })
   } catch (error) {
-    showToast(resolveLoginErrorMessage(error))
+    showErrorToast(resolveUserErrorMessage(error, 'login'))
   } finally {
     loading.value = false
   }

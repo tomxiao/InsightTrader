@@ -7,7 +7,9 @@ import { adminUsersApi } from '@api/adminUsers'
 import MobilePageLayout from '@components/layout/MobilePageLayout.vue'
 import { useAuthStore } from '@stores/auth'
 import type { ManagedUser } from '@/types/adminUsers'
+import { resolveUserErrorMessage } from '@utils/errorMessage'
 import { formatTimeLabel } from '@utils/format'
+import { showErrorToast } from '@utils/toast'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -44,7 +46,7 @@ const loadUsers = async () => {
   try {
     users.value = await adminUsersApi.listUsers()
   } catch (error) {
-    showToast((error as Error).message || '加载用户列表失败')
+    showErrorToast(resolveUserErrorMessage(error, 'admin-users-load'))
   } finally {
     loading.value = false
   }
@@ -82,7 +84,7 @@ const submitCreateUser = async () => {
     showToast('用户已创建')
     closeCreatePopup()
   } catch (error) {
-    showToast((error as Error).message || '创建用户失败')
+    showErrorToast(resolveUserErrorMessage(error, 'admin-user-create'))
   } finally {
     createSubmitting.value = false
   }
@@ -114,7 +116,7 @@ const toggleUserStatus = async (user: ManagedUser) => {
     updateLocalUser(updated)
     showToast(nextStatus === 'disabled' ? '用户已禁用' : '用户已启用')
   } catch (error) {
-    showToast((error as Error).message || `${actionText}用户失败`)
+    showErrorToast(resolveUserErrorMessage(error, 'admin-user-toggle', `${actionText}用户失败`))
   } finally {
     statusSubmittingId.value = null
   }
@@ -148,7 +150,7 @@ const submitResetPassword = async () => {
     showToast('密码已重置')
     closeResetPopup()
   } catch (error) {
-    showToast((error as Error).message || '重置密码失败')
+    showErrorToast(resolveUserErrorMessage(error, 'admin-user-reset-password'))
   } finally {
     resetSubmitting.value = false
   }
