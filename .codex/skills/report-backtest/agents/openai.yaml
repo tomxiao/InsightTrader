@@ -1,0 +1,4 @@
+interface:
+  display_name: "Report Backtest"
+  short_description: "Generate InsightTrader historical reports and run the report-driven backtest workflow."
+  default_prompt: "Use $report-backtest to generate historical InsightTrader lite-team reports for a ticker, resume interrupted batches when needed, and run the report-driven backtest workflow under backtest/."

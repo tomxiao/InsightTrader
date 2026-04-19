@@ -59,8 +59,9 @@ class RunnerResult:
 
 
 class TradingAgentsRunner:
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, *, config_overrides: dict | None = None):
         self.settings = settings
+        self.config_overrides = config_overrides or {}
 
     def build_runtime_diagnostics(self, payload: RunnerRequest) -> dict:
         config = self._build_config(Path(__file__).resolve())
@@ -243,6 +244,7 @@ class TradingAgentsRunner:
         config["results_dir"] = str(self.settings.results_root)
         config["output_language"] = self.settings.default_output_language
         config["project_dir"] = str(Path(os.getcwd()))
+        config.update(self.config_overrides)
         return config
 
     def _build_stage_snapshot(

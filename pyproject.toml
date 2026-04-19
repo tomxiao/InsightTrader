@@ -47,7 +47,7 @@ tradingagents = "cli.main:app"
 ta-service = "ta_service.main:run"
 
 [tool.setuptools.packages.find]
-include = ["tradingagents*", "cli*", "ta_service*"]
+include = ["tradingagents*", "cli*", "ta_service*", "backtest*"]
 
 [tool.setuptools.package-data]
 cli = ["static/*"]

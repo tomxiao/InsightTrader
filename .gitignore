@@ -224,6 +224,7 @@ __marimo__/
 
 # output
 results/
+reports/
 validation/vendor-news-lab/outputs/
 validation/llm-response-lab/outputs/
 .vite/

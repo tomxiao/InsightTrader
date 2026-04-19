@@ -12,9 +12,11 @@ MODEL_OPTIONS: ProviderModeOptions = {
     "deepseek": {
         "quick": [
             ("DeepSeek Chat - Default OpenAI-compatible model", "deepseek-chat"),
+            ("DeepSeek Reasoner - Reasoning model", "deepseek-reasoner"),
         ],
         "deep": [
             ("DeepSeek Chat - Default OpenAI-compatible model", "deepseek-chat"),
+            ("DeepSeek Reasoner - Reasoning model", "deepseek-reasoner"),
         ],
     },
     "openai": {
