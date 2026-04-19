@@ -13,7 +13,7 @@ from ta_service.models.report_insight import ReportInsightContext, ReportInsight
 from ta_service.runtime.user_trace import append_runtime_user_trace
 from ta_service.services.insight_reply_router import InsightReplyRouter
 from ta_service.services.report_context_loader import _SECTION_LABELS, ReportContextLoader
-from ta_service.teams import DEFAULT_TEAM_ID, get_section_labels
+from ta_service.teams import DEFAULT_TEAM_ID, get_section_labels, normalize_team_id
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.llm_clients.factory import create_llm_client
 
@@ -211,7 +211,11 @@ class ReportInsightAgent:
         )
         router_elapsed_ms = round((time.perf_counter() - router_started_at) * 1000, 1)
         reply_started_at = time.perf_counter()
-        gated_section = routing.primary_section
+        gated_section = self._resolve_gated_section(
+            team_id=context.team_id,
+            available_sections=context.available_sections,
+            routed_primary_section=routing.primary_section,
+        )
         gated_section_content = self._load_gated_section_content(
             trace_dir=context.trace_dir,
             section=gated_section,
@@ -354,7 +358,7 @@ class ReportInsightAgent:
             is_answerable=is_answerable,
             source_sections=unique_sections,
             routing_intent=routing.intent,
-            routing_primary_section=routing.primary_section,
+            routing_primary_section=gated_section,
             routing_fallback_sections=routing.fallback_sections,
             routing_reason=routing.reason,
             llm_router_ms=router_elapsed_ms,
@@ -376,17 +380,21 @@ class ReportInsightAgent:
             available_sections=context.available_sections,
         )
         router_elapsed_ms = round((time.perf_counter() - router_started_at) * 1000, 1)
+        gated_section = self._resolve_gated_section(
+            team_id=context.team_id,
+            available_sections=context.available_sections,
+            routed_primary_section=routing.primary_section,
+        )
         yield {
             "event": "routing",
             "routing_intent": routing.intent,
-            "routing_primary_section": routing.primary_section,
+            "routing_primary_section": gated_section,
             "routing_fallback_sections": routing.fallback_sections,
             "routing_reason": routing.reason,
             "llm_router_ms": router_elapsed_ms,
         }
 
         reply_started_at = time.perf_counter()
-        gated_section = routing.primary_section
         gated_section_content = self._load_gated_section_content(
             trace_dir=context.trace_dir,
             section=gated_section,
@@ -540,13 +548,25 @@ class ReportInsightAgent:
             is_answerable=is_answerable,
             source_sections=unique_sections,
             routing_intent=routing.intent,
-            routing_primary_section=routing.primary_section,
+            routing_primary_section=gated_section,
             routing_fallback_sections=routing.fallback_sections,
             routing_reason=routing.reason,
             llm_router_ms=router_elapsed_ms,
             llm_reply_ms=round((time.perf_counter() - reply_started_at) * 1000, 1),
         )
         return result
+
+    def _resolve_gated_section(
+        self,
+        *,
+        team_id: str,
+        available_sections: list[str],
+        routed_primary_section: str | None,
+    ) -> str | None:
+        normalized_team_id = normalize_team_id(team_id)
+        if normalized_team_id == "lite" and "decision" in available_sections:
+            return "decision"
+        return routed_primary_section
 
     def _load_gated_section_content(
         self,

@@ -23,7 +23,13 @@ class FakeLoader:
         self.sections = sections or {}
         self.requested_sections: list[str] = []
 
-    def load_single_section(self, *, trace_dir: str | None, section: str) -> str | None:
+    def load_single_section(
+        self,
+        *,
+        trace_dir: str | None,
+        section: str,
+        team_id: str | None = None,
+    ) -> str | None:
         self.requested_sections.append(section)
         return self.sections.get(section)
 
@@ -100,6 +106,7 @@ def test_agent_uses_summary_for_simple_question_without_tool_reads() -> None:
         question="现在适合买入吗？",
         ticker="TSLA",
         trade_date="2026-04-16",
+        team_id="full",
         trace_dir="D:/trace/mock",
         available_sections=["decision", "risk_cons"],
         summary_text="执行摘要：整体偏谨慎，主要因为估值不低、后续兑现还需要观察。",
@@ -161,6 +168,7 @@ def test_agent_reads_single_section_and_preserves_model_style_output() -> None:
         question="主要风险是什么？",
         ticker="TSLA",
         trade_date="2026-04-16",
+        team_id="full",
         trace_dir="D:/trace/mock",
         available_sections=["decision", "risk_cons", "risk_neutral"],
         summary_text="执行摘要：整体偏谨慎，但摘要未展开具体风险排序。",
@@ -183,6 +191,45 @@ def test_agent_reads_single_section_and_preserves_model_style_output() -> None:
     assert result.answer.startswith("主要是增长放缓、估值压力和资本开支偏高。")
     assert "如果你愿意，我可以继续说哪个风险更致命。" in result.answer
     assert len(llm.invocations) == 4
+
+
+def test_lite_agent_always_reads_decision_section_when_available() -> None:
+    loader = FakeLoader(
+        {
+            "decision": "评级：择机买入。入场方式：更适合等回调，不建议直接追高。",
+        }
+    )
+    llm = FakeToolAwareLLM(
+        [
+            AIMessage(
+                content='{"intent":"action","primary_section":null,"fallback_sections":[],"reason":"summary seems enough"}'
+            ),
+            AIMessage(
+                content="现在不建议直接追高，更像等回调再看。报告里的结论本身也是择机买入，不是让你立刻去追。",
+            ),
+            AIMessage(
+                content="现在不建议直接追高，更像等回调再看。报告里的结论本身也是择机买入，不是让你立刻去追。",
+            ),
+        ]
+    )
+    agent = ReportInsightAgent(report_context_loader=loader, llm=llm)
+    context = ReportInsightContext(
+        conversation_id="conv-lite-1",
+        question="可以买吗？",
+        ticker="LITE.US",
+        trade_date="2026-04-19",
+        team_id="lite",
+        trace_dir="D:/trace/mock",
+        available_sections=["decision", "market", "news", "fundamentals"],
+        summary_text="评级：择机买入。",
+    )
+
+    result = agent.answer(context=context)
+
+    assert loader.requested_sections == ["decision"]
+    assert result.source_sections == ["executive_summary", "decision"]
+    assert result.routing_primary_section == "decision"
+    assert result.answer.startswith("现在不建议直接追高")
 
 
 def test_iter_text_delta_events_splits_long_text() -> None:
@@ -215,6 +262,7 @@ def test_answer_events_emits_multiple_delta_events_for_direct_reply() -> None:
         question="现在适合买入吗？",
         ticker="TSLA",
         trade_date="2026-04-16",
+        team_id="full",
         trace_dir="D:/trace/mock",
         available_sections=["decision"],
         summary_text="执行摘要：整体偏谨慎。",
