@@ -40,6 +40,7 @@ class RunnerRequest:
     trade_date: str
     selected_analysts: list[str]
     team_id: str = DEFAULT_TEAM_ID
+    report_output_dir: Path | None = None
     on_stage_change: Callable[[str], None] | None = field(default=None, compare=False, hash=False)
     on_node_change: Callable[[str, str], None] | None = field(
         default=None, compare=False, hash=False
@@ -219,9 +220,12 @@ class TradingAgentsRunner:
             if final_state is None:
                 raise RuntimeError("TradingAgents did not produce a final state")
 
+            report_save_path = payload.report_output_dir or (
+                self.settings.reports_root / run_context.trace_dir.name
+            )
             report_dir = save_report_to_disk(
                 final_state,
-                self.settings.reports_root / run_context.trace_dir.name,
+                report_save_path,
                 team_id=team_spec.team_id,
             )
             return RunnerResult(

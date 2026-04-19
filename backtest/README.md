@@ -102,10 +102,12 @@
 
 其中：
 
-- `reports/yyyy-MMdd-ticker/` 保存每个分析日对应的完整报告副本
+- `reports/yyyy-MMdd-ticker/` 直接保存每个分析日对应的完整报告
 - `report_manifest.csv` 记录所有样本与对应的 `decision_path`
 - `batch_metadata.json` 会记录这批历史报告生成所使用的 `llm_provider=deepseek` 与 `llm_model`
 - 如果生成过程被打断，可用同一个目录执行 `--resume-dir` 继续跑，脚本会自动跳过已存在且 `decision_path` 可读的报告
+
+backtest 批量生成的历史报告不会再额外落到仓库根目录的全局 `reports/` 下；只有线上/常规分析流程才会使用根目录 `reports/`。
 
 ### 3. 用报告清单执行回测
 

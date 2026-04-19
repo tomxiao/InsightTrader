@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import shutil
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -96,15 +95,6 @@ def _persist_batch_state(output_dir: Path, metadata: dict[str, Any], records: li
     _write_manifest_json(output_dir / "report_manifest.json", records)
     _write_manifest_csv(output_dir / "report_manifest.csv", records)
 
-
-def _copy_report_into_batch(report_dir: Path, batch_reports_dir: Path, *, trade_date: str, ticker: str) -> Path:
-    destination = batch_reports_dir / build_report_dir_name(trade_date, ticker)
-    if destination.exists():
-        shutil.rmtree(destination)
-    shutil.copytree(report_dir, destination)
-    return destination
-
-
 def _run_single_report(
     *,
     ticker: str,
@@ -114,6 +104,7 @@ def _run_single_report(
     selected_analysts: list[str],
     batch_reports_dir: Path,
 ) -> dict:
+    report_dir = batch_reports_dir / build_report_dir_name(trade_date, ticker)
     runner = TradingAgentsRunner(
         get_settings(),
         config_overrides={
@@ -130,16 +121,9 @@ def _run_single_report(
         trade_date=trade_date,
         selected_analysts=selected_analysts,
         team_id=team_id,
+        report_output_dir=report_dir,
     )
     result = runner.run_analysis(request)
-    copied_report_dir = None
-    if result.report_dir is not None:
-        copied_report_dir = _copy_report_into_batch(
-            result.report_dir,
-            batch_reports_dir,
-            trade_date=trade_date,
-            ticker=ticker,
-        )
     return {
         "ticker": ticker.upper(),
         "trade_date": trade_date,
@@ -147,10 +131,10 @@ def _run_single_report(
         "llm_model": llm_model,
         "selected_analysts": ",".join(selected_analysts),
         "trace_dir": str(result.run_context.trace_dir),
-        "source_report_dir": str(result.report_dir) if result.report_dir else None,
-        "report_dir": str(copied_report_dir) if copied_report_dir else None,
+        "source_report_dir": None,
+        "report_dir": str(result.report_dir) if result.report_dir else None,
         "decision_path": (
-            str(copied_report_dir / "2_decision" / "summary.md") if copied_report_dir else None
+            str(result.report_dir / "2_decision" / "summary.md") if result.report_dir else None
         ),
         "llm_calls": result.stats.get("llm_calls"),
         "tool_calls": result.stats.get("tool_calls"),
