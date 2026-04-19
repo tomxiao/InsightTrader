@@ -4,6 +4,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { defineComponent } from 'vue'
 
 import ConversationPage from '../ConversationPage.vue'
+import type { StreamMessageEvent } from '@api/conversations'
 import { useAuthStore } from '@stores/auth'
 import { useConversationStore } from '@stores/conversation'
 import { MessageType } from '@/types/messageTypes'
@@ -74,6 +75,7 @@ const MobilePageLayoutStub = defineComponent({
     <div class="mobile-page-layout-stub">
       <header><slot name="header" /></header>
       <main><slot /></main>
+      <footer><slot name="footer" /></footer>
     </div>
   `,
 })
@@ -535,5 +537,119 @@ describe('ConversationPage acceptance', () => {
     const nextToggles = wrapper.findAll('.conversation-summary__toggle')
     expect(nextToggles[0]?.text()).toBe('展开全文')
     expect(nextToggles[1]?.text()).toBe('收起')
+  })
+
+  it('does not render conversation A stream chunks into conversation B after switching', async () => {
+    const conversationA: ConversationDetail = {
+      ...baseConversation,
+      id: 'conv-a',
+      title: '会话 A',
+      status: 'report_ready',
+      updatedAt: '2026-04-15T08:30:00.000Z',
+      messages: [
+        createMessage({
+          id: 'summary-a',
+          messageType: MessageType.SUMMARY_CARD,
+          content: { text: 'A 的总结卡' },
+          createdAt: '2026-04-15T08:31:00.000Z',
+        }),
+      ],
+    }
+
+    const conversationB: ConversationDetail = {
+      ...baseConversation,
+      id: 'conv-b',
+      title: '会话 B',
+      status: 'report_ready',
+      updatedAt: '2026-04-15T08:32:00.000Z',
+      messages: [
+        createMessage({
+          id: 'summary-b',
+          messageType: MessageType.SUMMARY_CARD,
+          content: { text: 'B 的总结卡' },
+          createdAt: '2026-04-15T08:33:00.000Z',
+        }),
+      ],
+    }
+
+    mockListConversations.mockResolvedValue([
+      makeSummary(conversationA),
+      makeSummary(conversationB),
+    ])
+    mockGetConversation.mockImplementation(async (id: string) =>
+      id === 'conv-b' ? conversationB : conversationA
+    )
+    mockCreateConversation.mockResolvedValue(makeSummary(conversationA))
+    mockDeleteConversation.mockResolvedValue(undefined)
+    mockResolve.mockResolvedValue({ messages: [], conversationStatus: conversationA.status })
+    mockStreamResolve.mockResolvedValue(undefined)
+    mockPostMessage.mockResolvedValue({ messages: [] })
+    mockConfirmResolution.mockResolvedValue({ messages: [], conversationStatus: conversationA.status })
+    mockLogout.mockResolvedValue(undefined)
+
+    let emitEvent: ((event: StreamMessageEvent) => void) | undefined
+    let resolveStream: (() => void) | undefined
+
+    mockStreamPostMessage.mockImplementation(
+      async (
+        _conversationId: string,
+        _payload: unknown,
+        handlers: { onEvent: (event: StreamMessageEvent) => void }
+      ) =>
+        await new Promise<void>(resolve => {
+          emitEvent = handlers.onEvent
+          resolveStream = resolve
+        })
+    )
+
+    const wrapper = mount(ConversationPage, {
+      global: {
+        stubs: {
+          MobilePageLayout: MobilePageLayoutStub,
+          'van-button': VanButtonStub,
+          'van-popup': VanPopupStub,
+          'van-icon': VanIconStub,
+          'van-field': VanFieldStub,
+        },
+      },
+    })
+
+    await flushPromises()
+
+    await wrapper.find('.van-field-stub').setValue('继续追问 A')
+    await wrapper.find('.conversation-input__send').trigger('click')
+    await flushPromises()
+
+    expect(emitEvent).toBeTypeOf('function')
+
+    emitEvent?.({
+      event: 'started',
+      userMessage: createMessage({
+        id: 'user-a-followup',
+        role: 'user',
+        messageType: MessageType.TEXT,
+        content: '继续追问 A',
+        createdAt: '2026-04-15T08:34:00.000Z',
+      }),
+    })
+    await flushPromises()
+
+    const conversationStore = useConversationStore()
+    conversationStore.setCurrentConversation(conversationB)
+    await flushPromises()
+
+    emitEvent?.({
+      event: 'delta',
+      text: '这是 A 会话的流式片段',
+    })
+    resolveStream?.()
+    await flushPromises()
+
+    expect(conversationStore.currentConversation.id).toBe('conv-b')
+    expect(
+      conversationStore.currentConversation.messages.some(message =>
+        String(message.content).includes('这是 A 会话的流式片段')
+      )
+    ).toBe(false)
   })
 })

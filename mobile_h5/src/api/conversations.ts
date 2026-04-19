@@ -37,6 +37,7 @@ export type StreamResolutionEvent =
 
 type StreamHandlers = {
   onEvent: (event: StreamMessageEvent) => void
+  signal?: AbortSignal
 }
 
 export const conversationsApi = {
@@ -69,6 +70,7 @@ export const conversationsApi = {
         ...(authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}),
       },
       body: JSON.stringify(payload),
+      signal: handlers.signal,
     })
 
     if (!response.ok || !response.body) {
@@ -107,7 +109,7 @@ export const conversationsApi = {
   async streamResolve(
     conversationId: string,
     payload: ResolutionRequest,
-    handlers: { onEvent: (event: StreamResolutionEvent) => void }
+    handlers: { onEvent: (event: StreamResolutionEvent) => void; signal?: AbortSignal }
   ) {
     const authStore = useAuthStore()
     const response = await fetch(`${env.apiBaseUrl}/conversations/${conversationId}/resolution/stream`, {
@@ -117,6 +119,7 @@ export const conversationsApi = {
         ...(authStore.token ? { Authorization: `Bearer ${authStore.token}` } : {}),
       },
       body: JSON.stringify(payload),
+      signal: handlers.signal,
     })
 
     if (!response.ok || !response.body) {

@@ -37,6 +37,7 @@ const logoutLoading = ref(false)
 const resolutionActionLoading = ref(false)
 const sendingLoading = ref(false)
 const isStreamingReply = ref(false)
+const activeStreamController = ref<AbortController | null>(null)
 
 const promptModel = ref('')
 const conversationBodyRef = ref<HTMLElement | null>(null)
@@ -234,6 +235,19 @@ const refreshCurrentConversation = async () => {
   await loadConversation(currentConversation.value.id)
 }
 
+const cancelActiveStream = () => {
+  if (!activeStreamController.value) return
+  activeStreamController.value.abort()
+  activeStreamController.value = null
+}
+
+const isAbortError = (error: unknown) =>
+  error instanceof DOMException
+    ? error.name === 'AbortError'
+    : typeof error === 'object' && error !== null && 'name' in error
+      ? (error as { name?: string }).name === 'AbortError'
+      : false
+
 const createConversation = async () => {
   const summary = await conversationsApi.createConversation({ title: '新会话' })
   conversationStore.upsertConversation(summary)
@@ -347,16 +361,20 @@ const applyResolutionResponse = async (
 }
 
 const handleStreamEvent = ({
+  conversationId,
   event,
   optimisticId,
   thinkingId,
   streamingAssistantId,
 }: {
+  conversationId: string
   event: StreamMessageEvent
   optimisticId: string
   thinkingId: string
   streamingAssistantId: string
 }) => {
+  if (currentConversation.value.id !== conversationId) return
+
   if (event.event === 'started') {
     conversationStore.removeMessageById(thinkingId)
     conversationStore.removeMessageById(optimisticId)
@@ -415,16 +433,20 @@ const handleStreamEvent = ({
 }
 
 const handleResolutionStreamEvent = ({
+  conversationId,
   event,
   optimisticId,
   thinkingId,
   streamingAssistantId,
 }: {
+  conversationId: string
   event: StreamResolutionEvent
   optimisticId: string
   thinkingId: string
   streamingAssistantId: string
 }): ResolutionResponse | null => {
+  if (currentConversation.value.id !== conversationId) return null
+
   if (event.event === 'started') {
     conversationStore.removeMessageById(thinkingId)
     conversationStore.removeMessageById(optimisticId)
@@ -523,10 +545,13 @@ const submitPrompt = async () => {
   }
 
   promptModel.value = ''
+  const requestConversationId = currentConversation.value.id
 
   const optimisticId = `optimistic-user-${Date.now()}`
   const thinkingId = `optimistic-thinking-${Date.now()}`
   const streamingAssistantId = `optimistic-assistant-${Date.now()}`
+  const streamController = new AbortController()
+  activeStreamController.value = streamController
   skipAutoStickMessageId.value = thinkingId
 
   conversationStore.appendMessages([
@@ -555,53 +580,69 @@ const submitPrompt = async () => {
       stopPolling()
       isStreamingReply.value = true
       let streamingStarted = false
-      await conversationsApi.streamPostMessage(currentConversation.value.id, { message: text }, {
+      await conversationsApi.streamPostMessage(requestConversationId, { message: text }, {
         onEvent: (event: StreamMessageEvent) => {
           handleStreamEvent({
+            conversationId: requestConversationId,
             event,
             optimisticId,
             thinkingId,
             streamingAssistantId,
           })
           streamingStarted = true
-        }
+        },
+        signal: streamController.signal,
       })
       if (!streamingStarted) {
         throw new Error('未收到流式回复事件')
       }
-      await refreshCurrentConversation()
+      if (currentConversation.value.id === requestConversationId) {
+        await loadConversation(requestConversationId)
+      }
       return
     }
 
     let resolutionResponse: ResolutionResponse | null = null
-    await conversationsApi.streamResolve(currentConversation.value.id, { message: text }, {
+    await conversationsApi.streamResolve(requestConversationId, { message: text }, {
       onEvent: (event: StreamResolutionEvent) => {
         const nextResponse = handleResolutionStreamEvent({
+          conversationId: requestConversationId,
           event,
           optimisticId,
           thinkingId,
           streamingAssistantId,
         })
         if (nextResponse) resolutionResponse = nextResponse
-      }
+      },
+      signal: streamController.signal,
     })
     if (!resolutionResponse) {
       throw new Error('未收到标的识别结果')
     }
-    conversationStore.removeMessageById(optimisticId)
-    conversationStore.removeMessageById(thinkingId)
-    conversationStore.removeMessageById(streamingAssistantId)
-    await applyResolutionResponse(resolutionResponse, { skipUserMessage: true })
+    if (currentConversation.value.id === requestConversationId) {
+      conversationStore.removeMessageById(optimisticId)
+      conversationStore.removeMessageById(thinkingId)
+      conversationStore.removeMessageById(streamingAssistantId)
+      await applyResolutionResponse(resolutionResponse, { skipUserMessage: true })
+    }
   } catch (error) {
-    conversationStore.removeMessageById(optimisticId)
-    conversationStore.removeMessageById(thinkingId)
-    conversationStore.removeMessageById(streamingAssistantId)
+    if (currentConversation.value.id === requestConversationId) {
+      conversationStore.removeMessageById(optimisticId)
+      conversationStore.removeMessageById(thinkingId)
+      conversationStore.removeMessageById(streamingAssistantId)
+    }
+    if (isAbortError(error)) {
+      return
+    }
     if (axios.isAxiosError(error) && error.code === 'ECONNABORTED') {
       showToast('识别耗时较长，请稍后查看结果或重新发送')
     } else {
       showToast((error as Error).message || '发送失败，请稍后再试')
     }
   } finally {
+    if (activeStreamController.value === streamController) {
+      activeStreamController.value = null
+    }
     isStreamingReply.value = false
     sendingLoading.value = false
   }
@@ -609,6 +650,9 @@ const submitPrompt = async () => {
 
 const openConversation = async (conversationId: string) => {
   try {
+    if (conversationId !== currentConversation.value.id) {
+      cancelActiveStream()
+    }
     await loadConversation(conversationId)
     conversationStore.setDrawerOpen(false)
     accountMenuOpen.value = false
@@ -1047,7 +1091,7 @@ const getSummaryPreview = (text: string) => {
   return first.trim()
 }
 
-const INSIGHT_GUIDE_CHIPS = ['可以买吗？', '要不要卖？', '能不能持有？', '主要风险是什么？']
+const INSIGHT_GUIDE_CHIPS = ['可以买吗？', '要不要卖？', '1-3个月走势？', '主要风险是什么？']
 
 const isLatestSummaryCard = (messageId: string): boolean => {
   const summaryMessages = currentMessages.value.filter(
@@ -1130,6 +1174,7 @@ onMounted(async () => {
 })
 
 onUnmounted(() => {
+  cancelActiveStream()
   if (typeof window === 'undefined') return
 
   window.clearTimeout(composerBlurTimer)
