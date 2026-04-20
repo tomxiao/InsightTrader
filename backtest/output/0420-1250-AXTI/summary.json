@@ -1,0 +1,18 @@
+{
+  "signal_count": 26,
+  "trade_count": 0,
+  "triggered_trade_count": 0,
+  "win_rate": null,
+  "avg_return": null,
+  "median_return": null,
+  "max_return": null,
+  "min_return": null,
+  "by_action": {
+    "hold": {
+      "signal_count": 26,
+      "trade_count": 0,
+      "win_rate": null,
+      "avg_return": null
+    }
+  }
+}

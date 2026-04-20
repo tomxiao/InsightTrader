@@ -25,7 +25,7 @@ def summarize_backtest(trades: list[SimulatedTrade]) -> BacktestSummary:
     return BacktestSummary(
         signal_count=len(trades),
         trade_count=len(realized),
-        triggered_trade_count=sum(1 for trade in trades if trade.status == "triggered"),
+        triggered_trade_count=sum(1 for trade in trades if trade.status in {"triggered", "triggered_exit"}),
         win_rate=round((wins / len(realized)) * 100, 4) if realized else None,
         avg_return=round(sum(realized) / len(realized), 4) if realized else None,
         median_return=round(median(realized), 4) if realized else None,

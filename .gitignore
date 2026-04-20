@@ -223,8 +223,9 @@ __marimo__/
 **/data_cache/
 
 # output
-results/
-reports/
+/results/
+/reports/
+/tradingagents/results
 validation/vendor-news-lab/outputs/
 validation/llm-response-lab/outputs/
 .vite/

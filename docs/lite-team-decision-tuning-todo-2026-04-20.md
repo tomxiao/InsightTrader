@@ -5,8 +5,8 @@
 本轮工作围绕 `InsightTrader lite team` 的 `decision manager` 与 `backtest` 展开，目标是解决：
 
 - 下行区间里仍持续给出 `择机买入` 的动作惰性
-- 回测批量生成历史报告时默认模型切换到 `deepseek-reasoner`
-- 新模型输出格式与 `backtest` parser 的兼容性
+- 回测批量生成历史报告默认继续使用 `deepseek-chat`
+- `deepseek-reasoner` 输出格式与 `backtest` parser 的兼容性
 
 核心样本标的是 `AXTI`，重点观察区间为：
 
@@ -18,7 +18,7 @@
 
 ## 今日已完成
 
-### 1. backtest 历史报告生成默认改为 `deepseek-reasoner`
+### 1. backtest 历史报告生成默认模型确定为 `deepseek-chat`
 
 已修改：
 
@@ -30,7 +30,7 @@
 
 当前行为：
 
-- `generate_report_batch.py` 默认使用 `deepseek-reasoner`
+- `generate_report_batch.py` 默认使用 `deepseek-chat`
 - 仅影响 backtest 历史报告生成链路
 - 不影响全局默认分析模型
 
@@ -76,7 +76,7 @@
 - 对下行风险识别不够快
 - 动作层对“风险主导”反应迟缓
 
-### B. 新版 deepseek-reasoner + 新 decision manager
+### B. `deepseek-chat` 默认链路 + 新 decision manager
 
 最新批次：
 
@@ -94,6 +94,11 @@
 
 - 下行区间里“持续择机买入”的问题基本被纠正
 - 但同时几乎完全错过了 `2026-03-09 ~ 2026-03-24` 这一段上涨周期
+
+补充说明：
+
+- 当前 backtest 默认模型已明确维持为 `deepseek-chat`
+- `deepseek-reasoner` 相关内容主要用于记录 parser 兼容性验证，不作为默认运行口径
 
 ## 当前判断
 

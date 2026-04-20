@@ -12,7 +12,8 @@ def _field_pattern(label: str, value_pattern: str, *, multiline: bool = False) -
         rf"(?:\*{{0,2}}\s*)?"
         rf"(?:\d+\.\s*)?"
         rf"(?:\*{{0,2}}\s*)?"
-        rf"{label}\s*(?:\*{{0,2}})?\s*[：:]\s*(?:\*{{0,2}})?\s*"
+        rf"{label}\s*(?:\*{{0,2}})?"
+        rf"(?:\s*[：:]\s*(?:\*{{0,2}})?\s*|\s*\n+\s*(?:\*{{0,2}})?\s*)"
     )
     body = value_pattern if multiline else rf"({value_pattern})"
     pattern = prefix + body

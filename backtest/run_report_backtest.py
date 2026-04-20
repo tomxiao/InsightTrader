@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -14,7 +16,7 @@ if str(ROOT_DIR) not in sys.path:
 
 load_dotenv(ROOT_DIR / ".env")
 
-from backtest.execution_rules import simulate_trade
+from backtest.execution_rules import simulate_signals
 from backtest.metrics import summarize_backtest
 from backtest.pathing import build_output_run_dir
 from backtest.report_parser import parse_report_file
@@ -123,6 +125,43 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _chart_path_for_output_dir(output_dir: Path, ticker: str) -> Path:
+    stem = output_dir.name
+    if "-" not in stem:
+        stem = build_output_run_dir(_default_output_dir(), ticker).name
+    return output_dir / f"{stem}-bt.png"
+
+
+def _render_backtest_chart(output_dir: Path, ohlcv: pd.DataFrame, ticker: str) -> Path | None:
+    chart_path = _chart_path_for_output_dir(output_dir, ticker)
+    ohlcv_csv = output_dir / f"{output_dir.name}-ohlcv.csv"
+    ohlcv.to_csv(ohlcv_csv, index=False, encoding="utf-8-sig")
+
+    helper = ROOT_DIR / "backtest" / "render_backtest_chart.py"
+    system_python = shutil.which("python")
+    if not system_python:
+        print("Warning: unable to locate system python; skip chart rendering.")
+        return None
+
+    cmd = [
+        system_python,
+        str(helper),
+        "--output-dir",
+        str(output_dir),
+        "--out",
+        str(chart_path),
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8")
+    if result.returncode != 0:
+        print("Warning: chart rendering failed.")
+        if result.stdout.strip():
+            print(result.stdout.strip())
+        if result.stderr.strip():
+            print(result.stderr.strip())
+        return None
+    return chart_path
+
+
 def main() -> int:
     args = build_parser().parse_args()
     signals = [parse_report_file(path, ticker=args.ticker) for path in args.report]
@@ -136,7 +175,7 @@ def main() -> int:
     else:
         ohlcv = _fetch_ohlcv(ticker, start_date, args.end_date)
 
-    trades = [simulate_trade(signal, ohlcv, max_holding_days=args.max_holding_days) for signal in signals]
+    trades = simulate_signals(signals, ohlcv, max_holding_days=args.max_holding_days)
     summary = summarize_backtest(trades)
 
     output_dir = _resolve_output_dir(args.report, args.output_dir, ticker)
@@ -155,6 +194,10 @@ def main() -> int:
         json.dumps(summary.to_dict(), ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+
+    chart_path = _render_backtest_chart(output_dir, ohlcv, ticker)
+    if chart_path is not None:
+        print(f"Chart saved to {chart_path}")
 
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     return 0

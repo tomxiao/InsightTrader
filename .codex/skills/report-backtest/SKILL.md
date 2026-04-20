@@ -107,6 +107,7 @@ Run backtest from generated reports:
 
 - Prefer `tushare` as the historical price source unless the user explicitly wants `--ohlcv-csv`
 - Historical report generation defaults to `deepseek-chat`
+- Batch backtest runs use `username=backtest`
 - Keep the ticker explicit in every run
 - When resuming, do not create a new batch directory; reuse the exact `--resume-dir`
 - When generation finishes, inspect:

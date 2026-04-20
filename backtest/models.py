@@ -42,6 +42,9 @@ class SimulatedTrade:
     entry_zone_low: float | None
     entry_zone_high: float | None
     invalidation_price: float | None
+    quantity: int = 1
+    exit_signal_date: str | None = None
+    exit_signal_action: str | None = None
     report_path: str | None = None
 
     def to_dict(self) -> dict:

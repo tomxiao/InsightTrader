@@ -115,7 +115,7 @@ def _run_single_report(
     )
     request = RunnerRequest(
         user_id="backtest-batch",
-        username="backtest-batch",
+        username="backtest",
         conversation_id=f"batch-{ticker.lower()}",
         ticker=ticker,
         trade_date=trade_date,
@@ -212,7 +212,7 @@ def main() -> int:
         "selected_analysts": selected_analysts,
         "sampled_dates": sampled_dates,
         "record_count": 0,
-        "report_concurrency": 3,
+        "report_concurrency": 5,
         "reports_dir": str(batch_reports_dir),
         "resume_dir": str(output_dir) if args.resume_dir else None,
     }
@@ -236,7 +236,7 @@ def main() -> int:
         record = records_by_date[trade_date]
         print(f"[{completed_count}/{total}] SKIP {trade_date} -> {record.get('decision_path')}")
 
-    max_workers = 3
+    max_workers = 5
     if pending_dates:
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_map = {}
