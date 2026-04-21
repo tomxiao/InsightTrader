@@ -74,6 +74,7 @@ default = true
 dev = [
     "build",
     "debugpy>=1.8.20",
+    "matplotlib>=3.10.8",
     "pre-commit",
     "pytest>=9.0.3",
     "ruff",

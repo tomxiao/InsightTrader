@@ -1,51 +1,197 @@
-# Backtest Experiment Runbook
+# 多标的回测实验执行手册
 
-这份文档是实际执行手册。  
-目标不是解释理念，而是回答一件事：
+这份文档只解决一件事：
 
-**下次要继续做回测实验时，按什么顺序、用什么脚本、看什么结果。**
+**多标的回测实验，今后应该按什么步骤执行、目录怎么组织、每轮必须产出什么。**
+
+它不是方法论文档，而是执行规范。  
+如果后面实验越做越多，默认都以这里为准。
 
 相关文档分工：
 
-- [README.md](/D:/CodeBase/InsightTrader/backtest/README.md)：单次 backtest 的基础执行说明
-- [TUNING_WORKFLOW.md](/D:/CodeBase/InsightTrader/backtest/TUNING_WORKFLOW.md)：调优方法论与实验原则
-- `EXPERIMENT_RUNBOOK.md`：具体怎么落地执行一轮实验
+- [README.md](/D:/CodeBase/InsightTrader/backtest/README.md)：单次 backtest 的基础说明
+- `EXPERIMENT_RUNBOOK.md`：多标的实验的固定流程、目录结构、结果分析与调优要求
 
-## 一轮实验的标准目标
+## 一、实验主题
 
-一轮实验必须满足这几个条件：
+在进入 `round` 之前，必须先定义 **实验主题**。
+
+实验主题代表一组长期不变的实验上下文，至少固定这几件事：
+
+- 样本池
+- 回测时间窗
+- 采样频率
+- 实验目标的大方向
+
+例如下面这些都应该被视为不同主题：
+
+- `MU + AAOI + 2513.HK`，区间 `2026-03-02 ~ 2026-04-07`
+- `MU + AAOI`，区间 `2026-01-01 ~ 2026-04-07`
+- `MU + 2513.HK`，区间 `2026-03-02 ~ 2026-06-30`
+- 同样的样本池，但从 `daily` 改成 `weekly`
+
+只要以下任一项变化，就不应继续沿用原来的连续 round 编号，而应该新开一个实验主题：
+
+- ticker 组合变化
+- 回测起止时间变化
+- 采样频率变化
+- 实验主目标发生明显变化
+
+### 实验主题与 round 的关系
+
+- **实验主题**：长期容器，定义“这一串 round 在比较什么”
+- **round**：主题内部的一次具体迭代
+
+可以理解成：
+
+- 主题负责“固定上下文”
+- round 负责“逐轮调优”
+
+### 主题目录规划
+
+为了避免不同主题下都出现 `round03 / round04` 而混淆，推荐采用两层目录：
+
+```text
+backtest/experiments/
+  <theme_name>/
+    theme_meta.json
+    README.md
+    rounds/
+      round01/
+      round02/
+      round03/
+```
+
+其中：
+
+- `<theme_name>`：建议显式编码样本池和区间，例如：
+  - `theme-mu-aaoi-2513hk-20260302-20260407-daily`
+- `theme_meta.json`：记录主题级固定上下文
+- `rounds/roundXX/`：每一轮具体实验目录
+
+结论上，**round 编号只能在同一个实验主题内部连续使用**。
+
+## 二、核心原则
+
+每一轮实验都必须满足：
 
 - 有唯一实验目录
 - 有固定样本池
 - 有固定时间窗
 - 有唯一主目标
-- 有可复现的输出
+- 有完整可复现输出
 
-不要在一轮里同时改很多东西。  
 默认一轮实验只改一个方向，例如：
 
+- 收紧偏弱买入
+- 补足该有卖出
 - 减少 `hold` 滥用
-- 减少过早 `sell`
-- 提高 `buy_on_pullback` 质量
+- 修复某一类 bad case
 
-## 当前推荐样本池
+不要在一轮里同时改：
 
-当前最小双市场样本池：
+- analyst prompt
+- decision manager
+- parser
+- execution rules
 
-- `AXTI`
-- `1347.HK`
+除非这是刻意定义的“整链实验”。
 
-当前推荐时间窗：
+## 三、术语定义
 
-- `AXTI`: `2026-03-02` 到 `2026-04-07`
-- `1347.HK`: `2026-03-01` 到 `2026-04-01`
+为了避免后面目录和口径混乱，统一使用这些术语。
 
-默认频次：
+### 1. theme
+
+实验主题。  
+它定义一串 round 共享的固定上下文，例如：
+
+- ticker 组合
+- 时间窗
+- 采样频率
+- 主题目标
+
+### 2. experiment / round
+
+主题内部的一轮具体迭代，例如：
+
+- `round01`
+- `round02`
+- `round03`
+
+它代表“一次调优 + 一组输出 + 一次复盘”。
+
+### 3. full_round
+
+完整生成：
+
+- `1_analysts`
+- `2_decision`
+
+适用场景：
+
+- 新样本池的 baseline
+- 上游 analyst 有变更
+- 需要重新建立基线输入
+
+### 4. decision_only_round
+
+复用 baseline 的：
+
+- `1_analysts`
+
+仅重新生成：
+
+- `2_decision/summary.md`
+
+适用场景：
+
+- 当前只调 `decision manager`
+- 希望提高实验效率
+- 希望让归因更干净
+
+### 5. baseline batch
+
+指某个 ticker 的 full_round 报告批次，例如：
+
+- `backtest/experiments/<theme_name>/rounds/round03/reports/MU/0421-1111-MU`
+
+它提供后续 decision-only round 要复用的 `1_analysts/`。
+
+### 6. experiment result
+
+指某一轮实验被正式记录在主题目录中的内容：
+
+- `backtest/experiments/<theme_name>/rounds/<round_name>/...`
+
+## 四、当前样本池
+
+当前多标的实验池统一为：
+
+- `MU`
+- `AAOI`
+- `2513.HK`
+
+角色分工：
+
+- `MU`：美股主样本，重点看买入门槛是否过松
+- `AAOI`：美股高波动对照样本，重点看 `sell` 是否不足
+- `2513.HK`：港股 guardrail，重点防止 prompt 被压得过度保守
+
+当前默认时间窗：
+
+- `MU`：`2026-03-02` ~ `2026-04-07`
+- `AAOI`：`2026-03-02` ~ `2026-04-07`
+- `2513.HK`：`2026-03-02` ~ `2026-04-07`
+
+当前默认采样：
 
 - `daily`
 - `step=1`
 
-## 目录规范
+如果以后调整样本池，必须同步更新本文件。
+
+## 五、实验目录结构
 
 实验目录统一放在：
 
@@ -53,207 +199,246 @@
 backtest/experiments/
 ```
 
-每轮结构：
+如果采用“主题目录 + rounds 子目录”，推荐结构为：
+
+```text
+backtest/experiments/<theme_name>/
+  theme_meta.json
+  README.md
+  rounds/
+    round01/
+      reports/
+        MU/
+          <batch_dir>/
+        AAOI/
+          <batch_dir>/
+        2513.HK/
+          <batch_dir>/
+      experiment_meta.json
+      compare.md
+      compare_summary.json
+      compare_summary.md
+      tickers/
+        ...
+    round02/
+      ...
+```
+
+如果当前仍沿用“单层 round 目录”，则每轮结构固定为：
 
 ```text
 backtest/experiments/<experiment_name>/
+  reports/
+    MU/
+      <batch_dir>/
+    AAOI/
+      <batch_dir>/
+    2513.HK/
+      <batch_dir>/
   experiment_meta.json
   compare.md
   compare_summary.json
   compare_summary.md
   tickers/
-    AXTI/
+    MU/
+      batch/
+        batch_metadata.json
+        report_manifest.json
+        report_manifest.csv
+      result/
+        summary.json
+        signals.csv
+        trades.csv
+        signal_case_label_summary.json
+        signal_case_labels.csv
+        signal_case_labels.md
+        *-ohlcv.csv
+        *-bt.png
+      notes.md
+    AAOI/
       batch/
       result/
       notes.md
-    1347.HK/
+    2513.HK/
       batch/
       result/
       notes.md
 ```
 
-说明：
+### report 存储规则
 
-- `batch/`：放该轮生成的历史报告批次信息
-- `result/`：放回测产物、打标结果、图表
-- `compare_summary.*`：跨标的实验汇总
-- `notes.md`：该标的本轮结论
+从现在开始，每个 round 的原始报告批次必须直接落在 round 目录内部。
 
-## 必用脚本
+统一约定：
 
-当前实验相关脚本：
+- `backtest/experiments/<theme_name>/rounds/<round_name>/reports/...`：该 round 的唯一正式 batch 输出目录
 
-- [init_experiment.py](/D:/CodeBase/InsightTrader/backtest/init_experiment.py)
-- [generate_report_batch.py](/D:/CodeBase/InsightTrader/backtest/generate_report_batch.py)
-- [run_report_backtest.py](/D:/CodeBase/InsightTrader/backtest/run_report_backtest.py)
-- [label_signal_cases.py](/D:/CodeBase/InsightTrader/backtest/label_signal_cases.py)
-- [summarize_experiment.py](/D:/CodeBase/InsightTrader/backtest/summarize_experiment.py)
-- [render_backtest_chart.py](/D:/CodeBase/InsightTrader/backtest/render_backtest_chart.py)
+推荐结构：
 
-## 标准执行顺序
+```text
+roundXX/
+  reports/
+    MU/
+      0421-1111-MU/
+    AAOI/
+      0421-1126-AAOI/
+    2513.HK/
+      0421-1140-2513HK/
+```
+
+要求：
+
+- 每个 ticker 保留原始 batch 目录名，避免丢失时间戳信息
+- 后续生成结果图、`signals.csv`、`trades.csv`、`summary.json`、`reports/...` 全部随 batch 一起归档
+- `tickers/<ticker>/result/` 仍保留“便于查看的收编副本”，但它不是原始报告主存储
+- 真正的原始回测产物，以 `roundXX/reports/` 下面的 batch 为准
+
+字段说明：
+
+- `experiment_meta.json`
+  - 记录实验元信息
+  - 至少包含：`name`、`tickers`、`start_date`、`end_date`、`sample_mode`、`step`、`mode`、`baseline_round`
+
+- `compare.md`
+  - 这一轮的人工总结
+  - 不是模板占位，必须填写
+
+- `compare_summary.*`
+  - 跨标的机器汇总
+
+- `tickers/<ticker>/batch/`
+  - 只存本轮这个 ticker 对应的报告批次元信息
+  - 不放整份 `reports/`
+
+- `tickers/<ticker>/result/`
+  - 只存本轮最终分析和复盘需要看的结果文件
+
+- `tickers/<ticker>/notes.md`
+  - 该 ticker 在本轮的人工复盘结论
+  - 必须填写
+
+## 六、每轮实验的固定步骤
+
+今后默认按这 8 步执行。
 
 ### 1. 初始化实验目录
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\init_experiment.py `
-  --name 2026-0421-round03 `
-  --tickers AXTI,1347.HK `
-  --start-date 2026-03-01 `
-  --end-date 2026-04-07 `
-  --sample-mode daily `
-  --step 1
-```
-
-说明：
-
-- `experiment_meta.json` 记录这轮实验元信息
-- `tickers/<ticker>/batch` 和 `tickers/<ticker>/result` 会自动创建
-
-### 2. 为每个 ticker 生成历史报告
-
-#### AXTI
-
-```powershell
-.\.venv\Scripts\python.exe backtest\generate_report_batch.py `
-  --ticker AXTI `
-  --start-date 2026-03-02 `
-  --end-date 2026-04-07 `
-  --sample-mode daily `
-  --step 1
-```
-
-#### 1347.HK
-
-```powershell
-.\.venv\Scripts\python.exe backtest\generate_report_batch.py `
-  --ticker 1347.HK `
-  --start-date 2026-03-01 `
-  --end-date 2026-04-01 `
-  --sample-mode daily `
-  --step 1
-```
-
-输出目录会落到：
-
-```text
-backtest/output/MMdd-HHmm-TICKER/
-```
-
-### 3. 如果生成中断，用 `--resume-dir` 续跑
-
-不要新开批次，直接续跑原目录。
-
-#### AXTI 示例
-
-```powershell
-.\.venv\Scripts\python.exe backtest\generate_report_batch.py `
-  --ticker AXTI `
+  --base-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds `
+  --name round05 `
+  --tickers MU,AAOI,2513.HK `
   --start-date 2026-03-02 `
   --end-date 2026-04-07 `
   --sample-mode daily `
   --step 1 `
-  --resume-dir backtest\output\0421-0119-AXTI
-```
-
-#### 1347.HK 示例
-
-```powershell
-.\.venv\Scripts\python.exe backtest\generate_report_batch.py `
-  --ticker 1347.HK `
-  --start-date 2026-03-01 `
-  --end-date 2026-04-01 `
-  --sample-mode daily `
-  --step 1 `
-  --resume-dir backtest\output\0421-0119-1347HK
+  --mode decision_only_round `
+  --baseline-round round04
 ```
 
 规则：
 
-- 遇到外部连接错误，优先续跑
-- 不要丢弃已完成的批次
-- 不要混用两个不同批次做同一轮回测
+- `mode=full_round` 时，`baseline_round` 可空
+- `mode=decision_only_round` 时，`baseline_round` 必填
 
-### 4. 用 manifest 批量跑回测
+### 2. 生成报告批次
 
-注意：
-
-- 必须显式传 `--ticker`
-- 否则脚本有可能从路径误推 ticker
-
-#### AXTI
+#### full_round
 
 ```powershell
-$dir = 'D:\CodeBase\InsightTrader\backtest\output\0421-0119-AXTI'
-$manifest = Import-Csv (Join-Path $dir 'report_manifest.csv')
-$reports = @()
-foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
-& .\.venv\Scripts\python.exe backtest\run_report_backtest.py `
-  @reports `
-  --ticker AXTI `
+.\.venv\Scripts\python.exe backtest\generate_report_batch.py `
+  --ticker MU `
+  --start-date 2026-03-02 `
   --end-date 2026-04-07 `
-  --max-holding-days 60
+  --sample-mode daily `
+  --step 1 `
+  --output-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU
 ```
 
-#### 1347.HK
+#### decision_only_round
 
 ```powershell
-$dir = 'D:\CodeBase\InsightTrader\backtest\output\0421-0119-1347HK'
+.\.venv\Scripts\python.exe backtest\generate_report_batch.py `
+  --ticker MU `
+  --start-date 2026-03-02 `
+  --end-date 2026-04-07 `
+  --sample-mode daily `
+  --step 1 `
+  --decision-only `
+  --output-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU `
+  --reuse-analyst-from backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round03\reports\MU\0421-1111-MU
+```
+
+decision-only 模式下：
+
+- 复制 baseline 的 `1_analysts/`
+- 只重新生成 `2_decision/summary.md`
+- 不重跑 `market / news / fundamentals`
+
+### 3. 中断就续跑，不新开批次
+
+统一使用：
+
+- `--resume-dir`
+
+规则：
+
+- 不要因为中途中断就重新生成一个新 batch 目录
+- `--resume-dir` 必须指向同一个 round 下已有的 batch 目录
+- 不要把两个不同 batch 混用到同一轮实验里
+
+### 4. 跑回测
+
+必须显式传 `--ticker`。
+
+标准形式：
+
+```powershell
+$dir = 'D:\CodeBase\InsightTrader\backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU'
 $manifest = Import-Csv (Join-Path $dir 'report_manifest.csv')
 $reports = @()
 foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 & .\.venv\Scripts\python.exe backtest\run_report_backtest.py `
   @reports `
-  --ticker 1347.HK `
-  --end-date 2026-04-01 `
+  --ticker MU `
+  --end-date 2026-04-07 `
   --max-holding-days 60
 ```
 
 ### 5. 自动打标
 
-#### AXTI
-
 ```powershell
 .\.venv\Scripts\python.exe backtest\label_signal_cases.py `
-  --result-dir backtest\output\0421-0119-AXTI
+  --result-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU
 ```
 
-#### 1347.HK
+### 6. 出图
 
-```powershell
-.\.venv\Scripts\python.exe backtest\label_signal_cases.py `
-  --result-dir backtest\output\0421-0119-1347HK
-```
-
-输出：
-
-- `signal_case_labels.csv`
-- `signal_case_labels.md`
-- `signal_case_label_summary.json`
-
-### 6. 补图
-
-`run_report_backtest.py` 默认会尝试画图。  
-如果图没生成，可以单独补：
+`run_report_backtest.py` 默认会尝试自动出图。  
+如果需要单独补图：
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\render_backtest_chart.py `
-  --output-dir backtest\output\0421-0119-AXTI `
-  --out backtest\output\0421-0119-AXTI\0421-0119-AXTI-bt.png
+  --output-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU `
+  --out backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU\0421-1300-MU-bt.png
 ```
 
-前提：
+规则：
 
-- `.venv` 里已安装 `matplotlib`
+- 图始终依赖当前目录下的本地 `*-ohlcv.csv`
+- 图标题必须使用当前批次真实 ticker
 
-### 7. 把结果收编进实验目录
+### 7. 收编进实验目录
 
-每个 ticker 至少复制这些文件到：
+每个 ticker 必须复制这些文件：
 
-```text
-backtest/experiments/<experiment_name>/tickers/<ticker>/result/
-```
+放到 `tickers/<ticker>/batch/`：
 
-必备文件：
+- `batch_metadata.json`
+- `report_manifest.json`
+- `report_manifest.csv`
+
+放到 `tickers/<ticker>/result/`：
 
 - `summary.json`
 - `signals.csv`
@@ -264,128 +449,238 @@ backtest/experiments/<experiment_name>/tickers/<ticker>/result/
 - `*-ohlcv.csv`
 - `*-bt.png`
 
-### 8. 生成实验汇总
+重要规则：
+
+- 收编时必须覆盖旧图，不能保留 experiment 目录里的旧副本
+- 不要把图或 batch 产物输出到 round 目录以外的路径
+
+### 8. 生成跨标的汇总
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\summarize_experiment.py `
-  --experiment-dir backtest\experiments\2026-0421-round03
+  --experiment-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05
 ```
 
-输出：
+## 七、每轮实验必须填写的人工输出
 
-- `compare_summary.json`
-- `compare_summary.md`
+这部分不能留空模板。
 
-## 一轮结束后必须看的输出
+### 1. `compare.md`
 
-按优先级看：
+每轮必须至少写：
 
-### 第一层：结构是否失控
+- 本轮目标
+- 本轮实际改动
+- 跨标的结果总结
+- 下一轮建议
+
+### 2. `tickers/<ticker>/notes.md`
+
+每个 ticker 必须至少写：
+
+- 本轮目标
+- 改动内容
+- 观察结论
+- 下一步
+
+如果 `notes.md` 和 `compare.md` 没填，这轮实验就不算真正收尾。
+
+## 八、结果阅读顺序
+
+### 第一层：先看结构
+
+看：
 
 - `compare_summary.md`
 - 每个 ticker 的 `summary.json`
 - 每个 ticker 的 `signals.csv`
-- 每个 ticker 的 `trades.csv`
 
 先回答：
 
-- `buy/hold/sell` 是否明显失衡
-- 是否几乎不交易
-- 是否过度交易
+- `buy / hold / sell` 是否明显失衡
+- 有没有几乎不交易
+- 有没有过度交易
 - `sell` 是否大多发生在无持仓时
 
-### 第二层：错在哪里
+### 第二层：再看好坏样本
+
+看：
 
 - `signal_case_labels.md`
 - `signal_case_label_summary.json`
 
-先看：
+先回答：
 
-- `good/bad/unclear` 比例
+- `good / bad / unclear` 比例是否改善
 - `bad_case` 是否集中在同一类动作
-- `hold` 是否在吸收太多模糊样本
+- 是否把太多样本推回 `hold`
 
-### 第三层：为什么错
+### 第三层：最后回到正文
+
+看：
 
 - 对应日期的 `reports/<date>/2_decision/summary.md`
 
 重点找：
 
-- 哪些表述稳定推向错误的 `hold`
-- 哪些表述稳定推向错误的 `sell`
-- 哪些表述把“附近支撑”误当成“可执行低吸”
+- 哪些表述在稳定推错
+- 哪些表述导致过早买入
+- 哪些表述导致该卖不卖
+- 哪些表述让港股样本被压得过度保守
 
-## 每轮实验必须记录的结论
+## 九、结果分析与调优方法
 
-建议在实验目录额外写：
+### 1. 不要只看 `summary.json`
 
-- `round01_vs_round02.md`
-- `bad_case_patterns.md`
-- `decision_summary_patterns.md`
+单个 `summary.json` 只能告诉你这一批结果如何，不能直接告诉你：
 
-至少回答：
+- 为什么错
+- 错在 analyst、decision manager 还是执行规则
+- 这个改动是否能跨标的成立
 
-1. 本轮主要修复了哪类 bad case
-2. 本轮新引入了什么坏模式
-3. 改动是否跨标的成立
+正确顺序始终是：
 
-## 当前已验证过的注意事项
+1. 先看分布
+2. 再看 `good / bad / unclear`
+3. 最后回到具体日期的 `summary.md`
 
-### 1. `run_report_backtest.py` 必须显式传 `--ticker`
+### 2. 先识别 `bad_case`，再谈提升收益
 
-否则可能从报告路径误推 ticker，导致行情取数失败。
+每轮调优先回答：
 
-### 2. 外部连接中断时，不要重开新批次
+- 哪类信号最容易错
+- 错误是否集中在同一种动作
+- 是不是出现了新的坏模式
 
-优先用：
+优先减少这些典型错误：
 
-- `--resume-dir`
+- 应该 `buy` 却给了 `hold`
+- 应该 `sell` 却给了 `hold`
+- 过早 `sell`
+- 过弱证据下仍给 `buy_on_pullback`
+- 港股或高波动样本被压得过度保守
 
-### 3. 生成实验汇总时，不要把“复制结果”和“汇总脚本”并行跑
+### 3. `good_case / bad_case / unclear` 的使用原则
 
-否则容易出现：
+不要只给成交交易打标签。
 
-- `compare_summary.json` 为空
-- `compare_summary.md` 只有表头
+`hold` 和 `sell` 同样要打，因为：
+
+- `hold` 最容易漏掉本该参与的大行情
+- `sell` 最容易暴露“风险主导判断”是否真的成立
+
+如果一轮实验里：
+
+- `bad_case` 总量没有下降
+- 只是把大量样本推回 `hold`
+
+那通常不算真正改好。
+
+### 4. bad case 归因顺序
+
+建议固定按下面顺序归因：
+
+1. 先看 `decision manager` 输出的 `趋势判断` 和 `建议行动` 是否一致
+2. 再看 `1_analysts/` 输入是否已经明显偏向某个方向
+3. 最后才看 parser 或 execution 是否把本来合理的文本执行歪了
+
+也就是优先区分：
+
+- 趋势判断错
+- 动作映射错
+- 上游 analyst 输入就不稳定
+- 执行规则放大了问题
+
+### 5. 每轮只改一个方向
+
+每轮只允许一个主目标，例如：
+
+- 收紧弱证据买入
+- 补足风险主导卖出
+- 修复港股样本过度保守
+
+不要同一轮同时改：
+
+- analyst prompt
+- decision manager
+- parser
+- execution rules
+
+否则你只能看到“结果变了”，看不出“为什么变了”。
+
+### 6. 先做回归，再做扩展
+
+每次调优后，先回归当前主题样本池，再决定是否引入新主题。
+
+如果一个改动只改善了 `MU`，却让：
+
+- `AAOI` 明显变差
+- `2513.HK` 大量塌回 `hold`
+
+那就不应该继续放大。
+
+### 7. 进入下一轮前必须回答 3 个问题
+
+1. 本轮主要减少了哪类 `bad_case`
+2. 本轮是否引入了新的坏模式
+3. 本轮改动是否能在当前主题的多标的样本里同时成立
+
+如果这 3 个问题答不清，就不要直接进入下一轮。
+
+## 十、当前已验证的坑
+
+### 1. `run_report_backtest.py` 必须传 `--ticker`
+
+否则可能从路径误推 ticker，造成行情取数或出图异常。
+
+### 2. 图标题不能写死 ticker
+
+标题必须从当前批次结果动态读取。  
+否则不同 ticker 的图会错误显示成 `AXTI`。
+
+### 3. 收编 experiment 目录时，图要同步覆盖
+
+源批次目录里的图即使是新的，experiment 目录里的旧图也不会自动更新。  
+收编时必须显式覆盖。
+
+### 4. 生成实验汇总时，不要和复制结果并行跑
 
 正确顺序：
 
-1. 先复制文件
+1. 先复制结果
 2. 再单独运行 `summarize_experiment.py`
 
-### 4. 图表渲染依赖 `.venv` 的 `matplotlib`
+否则容易出现：
 
-如果回测时出现：
+- `compare_summary.md` 只有表头
+- `compare_summary.json` 为空
 
-```text
-ModuleNotFoundError: No module named 'matplotlib'
-```
+### 5. `.venv` 必须带 `matplotlib`
 
-先安装：
+当前已把 `matplotlib` 放进项目 dev 依赖。  
+后续统一用：
 
-```powershell
-.\.venv\Scripts\python.exe -m ensurepip --upgrade
-.\.venv\Scripts\python.exe -m pip install matplotlib
-```
+- `.venv\Scripts\python.exe`
 
-然后单独补图。
+来补图。
 
-## 当前建议的执行节奏
+## 十一、推荐执行节奏
 
-未来继续实验时，默认按下面节奏：
+以后默认按下面节奏推进：
 
-1. 开一轮实验目录
-2. 跑 `AXTI + 1347.HK`
-3. 自动打标
-4. 生成实验汇总
-5. 做坏例归因
-6. 只改一处提示词或规则
-7. 开下一轮实验
+1. `round01` 或某个新的 `full_round` 建 baseline
+2. 观察多标的结构、收益和 bad case
+3. 只改一处 decision 规则
+4. 开下一轮 `decision_only_round`
+5. 重跑多标的
+6. 填 `notes.md` 和 `compare.md`
+7. 再决定是否继续下一轮
 
 不要跳过：
 
+- 多标的对照
 - 自动打标
-- 跨标的对比
-- 坏例归因
+- 人工 notes
+- compare 总结
 
-否则很容易回到“单看收益、靠感觉调 prompt”的低效率状态。
+否则实验很快又会重新变乱。

@@ -18,7 +18,7 @@ load_dotenv(ROOT_DIR / ".env")
 
 from backtest.execution_rules import simulate_signals
 from backtest.metrics import summarize_backtest
-from backtest.pathing import build_output_run_dir
+from backtest.pathing import is_round_batch_dir
 from backtest.report_parser import parse_report_file
 from tradingagents.dataflows.finnhub_stock import _fetch_finnhub_ohlcv
 from tradingagents.dataflows.stockstats_utils import load_ohlcv
@@ -63,10 +63,6 @@ def _fetch_ohlcv(ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
     )
 
 
-def _default_output_dir() -> Path:
-    return Path("backtest") / "output"
-
-
 def _infer_batch_output_dir(report_paths: list[str]) -> Path | None:
     candidates: set[Path] = set()
     for raw_path in report_paths:
@@ -84,14 +80,15 @@ def _infer_batch_output_dir(report_paths: list[str]) -> Path | None:
 
 
 def _resolve_output_dir(report_paths: list[str], output_dir: str | None, ticker: str) -> Path:
-    if output_dir:
-        return Path(output_dir)
-
     inferred = _infer_batch_output_dir(report_paths)
-    if inferred is not None:
-        return inferred
-
-    return build_output_run_dir(_default_output_dir(), ticker)
+    if inferred is None or not is_round_batch_dir(inferred):
+        raise ValueError("All --report paths must belong to one round batch directory under rounds/<round>/reports/<ticker>/<batch>")
+    if output_dir:
+        explicit = Path(output_dir)
+        if explicit.resolve() != inferred.resolve():
+            raise ValueError("--output-dir, when provided, must equal the inferred round batch directory")
+        return explicit
+    return inferred
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -127,8 +124,6 @@ def build_parser() -> argparse.ArgumentParser:
 
 def _chart_path_for_output_dir(output_dir: Path, ticker: str) -> Path:
     stem = output_dir.name
-    if "-" not in stem:
-        stem = build_output_run_dir(_default_output_dir(), ticker).name
     return output_dir / f"{stem}-bt.png"
 
 

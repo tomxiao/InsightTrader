@@ -41,6 +41,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=str(Path("backtest") / "experiments"),
         help="Base directory for experiment scaffolds.",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["full_round", "decision_only_round"],
+        default="full_round",
+        help="Experiment mode. full_round builds a baseline; decision_only_round reuses analyst reports.",
+    )
+    parser.add_argument(
+        "--baseline-round",
+        help="Optional baseline experiment name or round id when mode=decision_only_round.",
+    )
     return parser
 
 
@@ -52,7 +62,9 @@ def main() -> int:
 
     experiment_dir = Path(args.base_dir) / args.name
     tickers_dir = experiment_dir / "tickers"
+    reports_dir = experiment_dir / "reports"
     tickers_dir.mkdir(parents=True, exist_ok=True)
+    reports_dir.mkdir(parents=True, exist_ok=True)
 
     experiment_meta = {
         "name": args.name,
@@ -61,6 +73,8 @@ def main() -> int:
         "sample_mode": args.sample_mode,
         "step": args.step,
         "tickers": tickers,
+        "mode": args.mode,
+        "baseline_round": args.baseline_round,
     }
     (experiment_dir / "experiment_meta.json").write_text(
         json.dumps(experiment_meta, ensure_ascii=False, indent=2),
@@ -70,39 +84,40 @@ def main() -> int:
     compare_stub = [
         f"# {args.name}",
         "",
-        "## Goal",
+        "## 本轮目标",
         "",
-        "- Fill in the tuning goal for this round.",
+        "- 在这里填写本轮调优目标。",
         "",
-        "## Cross-Ticker Summary",
+        "## 跨标的总结",
         "",
-        "- Fill in after running backtests and labels.",
+        "- 在完成回测与信号标注后填写。",
         "",
     ]
     (experiment_dir / "compare.md").write_text("\n".join(compare_stub), encoding="utf-8")
 
     notes_stub = "\n".join(
         [
-            "## Goal",
+            "## 本轮目标",
             "",
-            "- Fill in the ticker-specific focus for this round.",
+            "- 在这里填写该标的本轮重点。",
             "",
-            "## Changes",
+            "## 改动内容",
             "",
-            "- Fill in what changed before this run.",
+            "- 在这里填写本轮运行前做了哪些调整。",
             "",
-            "## Findings",
+            "## 观察结论",
             "",
-            "- Fill in the main observations after review.",
+            "- 在这里填写复盘后的主要发现。",
             "",
-            "## Next Step",
+            "## 下一步",
             "",
-            "- Fill in the next action.",
+            "- 在这里填写下一步动作。",
             "",
         ]
     )
     for ticker in tickers:
         ticker_dir = tickers_dir / ticker
+        (reports_dir / ticker).mkdir(parents=True, exist_ok=True)
         (ticker_dir / "batch").mkdir(parents=True, exist_ok=True)
         (ticker_dir / "result").mkdir(parents=True, exist_ok=True)
         (ticker_dir / "notes.md").write_text(notes_stub, encoding="utf-8")

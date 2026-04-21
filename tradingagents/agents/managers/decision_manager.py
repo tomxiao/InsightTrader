@@ -6,14 +6,15 @@ from tradingagents.agents.utils.agent_states import AgentState
 from tradingagents.agents.utils.agent_utils import get_language_instruction
 
 
-def create_decision_manager(llm: Any):
-    def decision_manager_node(state: AgentState) -> dict:
-        market_report = state.get("market_report", "")
-        news_report = state.get("news_report", "")
-        fundamentals_report = state.get("fundamentals_report", "")
-        instrument = state["company_of_interest"]
-        trade_date = state["trade_date"]
-        prompt = f"""你是一个轻量级交易分析团队的投资决策经理。
+def build_decision_manager_prompt(
+    *,
+    instrument: str,
+    trade_date: str,
+    market_report: str,
+    news_report: str,
+    fundamentals_report: str,
+) -> str:
+    return f"""你是一个轻量级交易分析团队的投资决策经理。
 
 你的任务是综合现有分析师报告，输出一份简洁、明确、可执行、可用于 backtest 的最终交易决策。
 
@@ -76,8 +77,14 @@ def create_decision_manager(llm: Any):
      - 出现止跌/缩量企稳/假跌破回收；
      - 收复关键短期均线或短期结构位；
      - 能明确说明为何这是“健康回调”而不是“继续走弱中的下跌中继”。
+   - 如果只是 `market` 报告给出了回调区间，但 `news` 与 `fundamentals` 没有提供足够的正向确认，且正文也没有出现新的企稳证据，则不要仅凭“支撑区接近”或“长期趋势未坏”就判为 `趋势延续`。
 6. 若你判断为 `建议卖出`，必须优先基于“当前风险主导已经成立”的新鲜证据，而不是仅仅沿用前几日的空头叙事。
    - 若价格已经出现明显修复、重新站回关键短期结构，不能只因为宏观风险仍在就继续维持 `建议卖出`。
+   - 但反过来，如果已经同时出现以下任意两类信号，应明显提高 `风险主导` 的优先级，而不是退回 `保持观望`：
+     - 正文已转为“减仓 / 止损 / 反弹卖出 / 风险控制优先”的持仓语义；
+     - 价格位于关键短中期均线下方，且反弹更像弱修复而非趋势重建；
+     - 新闻面或宏观面正在主导短期负面风险；
+     - 基本面无法为未来 1-2 周提供足够清晰的向上催化。
 7. 若你判断为 `保持观望`，不要只写“等待确认”“多空拉扯”“方向未明”。
    - 你必须明确指出：当前缺少的是哪一个确认信号；
    - 若缺少的信号已经非常接近触发，则要认真评估是否其实更接近 `择机买入` 或 `建议卖出`。
@@ -162,8 +169,43 @@ def create_decision_manager(llm: Any):
 
 请保持结论明确、表达简洁，并且只能基于以上提供的报告内容作出判断，不要引入外部信息或额外假设。
 请不要输出英文标题，也不要输出英文建议行动。最终结果必须完全使用中文。{get_language_instruction()}"""
-        response = llm.invoke(prompt)
-        content = getattr(response, "content", "") or ""
+
+
+def generate_decision_report(
+    llm: Any,
+    *,
+    instrument: str,
+    trade_date: str,
+    market_report: str,
+    news_report: str,
+    fundamentals_report: str,
+) -> str:
+    prompt = build_decision_manager_prompt(
+        instrument=instrument,
+        trade_date=trade_date,
+        market_report=market_report,
+        news_report=news_report,
+        fundamentals_report=fundamentals_report,
+    )
+    response = llm.invoke(prompt)
+    return (getattr(response, "content", "") or "").strip()
+
+
+def create_decision_manager(llm: Any):
+    def decision_manager_node(state: AgentState) -> dict:
+        market_report = state.get("market_report", "")
+        news_report = state.get("news_report", "")
+        fundamentals_report = state.get("fundamentals_report", "")
+        instrument = state["company_of_interest"]
+        trade_date = state["trade_date"]
+        content = generate_decision_report(
+            llm,
+            instrument=instrument,
+            trade_date=trade_date,
+            market_report=market_report,
+            news_report=news_report,
+            fundamentals_report=fundamentals_report,
+        )
         return {
             "investment_plan": content,
             "final_trade_decision": content,

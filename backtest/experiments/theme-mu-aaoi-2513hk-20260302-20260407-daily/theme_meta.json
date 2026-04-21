@@ -1,0 +1,14 @@
+{
+  "theme_name": "theme-mu-aaoi-2513hk-20260302-20260407-daily",
+  "display_name": "MU + AAOI + 2513.HK（2026-03-02 ~ 2026-04-07，日频）",
+  "start_date": "2026-03-02",
+  "end_date": "2026-04-07",
+  "sample_mode": "daily",
+  "step": 1,
+  "tickers": [
+    "MU",
+    "AAOI",
+    "2513.HK"
+  ],
+  "goal": "围绕 decision manager 做多标的动作边界调优：收紧弱证据买入、补足风险主导卖出，并用港股样本防止整体过度保守或过度激进。"
+}

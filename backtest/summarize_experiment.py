@@ -88,9 +88,9 @@ def main() -> int:
     output_json.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
 
     lines = [
-        f"# {experiment_dir.name} Compare Summary",
+        f"# {experiment_dir.name} 跨标的汇总",
         "",
-        "| ticker | signals | trades | triggered | win_rate | avg_return | buy | hold | sell | good | bad | unclear | skipped | expired | no_data |",
+        "| 标的 | 信号数 | 交易数 | 实际成交 | 胜率 | 平均收益 | 择机买入 | 保持观望 | 建议卖出 | 好样本 | 坏样本 | 待判断 | 跳过 | 过期未成交 | 无后续数据 |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in rows:

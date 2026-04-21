@@ -19,3 +19,13 @@ def build_output_run_dir(base_dir: str | Path, ticker: str, *, now: datetime | N
 def build_report_dir_name(trade_date: str, ticker: str) -> str:
     normalized = datetime.strptime(trade_date, "%Y-%m-%d").strftime("%Y-%m%d")
     return f"{normalized}-{normalize_ticker_for_path(ticker)}"
+
+
+def is_round_reports_ticker_dir(path: str | Path) -> bool:
+    candidate = Path(path)
+    return candidate.parent.name == "reports"
+
+
+def is_round_batch_dir(path: str | Path) -> bool:
+    candidate = Path(path)
+    return candidate.parent.parent.name == "reports"

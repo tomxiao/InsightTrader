@@ -35,6 +35,27 @@ class SignalLabel:
         return payload
 
 
+LABEL_DISPLAY = {
+    "good_case": "好样本",
+    "bad_case": "坏样本",
+    "unclear": "待判断",
+}
+
+ACTION_DISPLAY = {
+    "buy_on_pullback": "择机买入",
+    "hold": "保持观望",
+    "sell": "建议卖出",
+}
+
+
+def _label_display(label: str) -> str:
+    return LABEL_DISPLAY.get(label, label)
+
+
+def _action_display(action: str) -> str:
+    return ACTION_DISPLAY.get(action, action)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Label daily backtest signals as good_case, bad_case, or unclear.")
     parser.add_argument("--result-dir", required=True, help="Directory containing signals.csv, trades.csv, summary.json, and *-ohlcv.csv.")
@@ -104,7 +125,7 @@ def _label_signal(
                 label="good_case" if realized > 0 else "bad_case",
                 metric_name="realized_return_pct",
                 metric_value_pct=realized,
-                note="Triggered and exited profitable." if realized > 0 else "Triggered and lost money.",
+                note="信号已成交且最终盈利。" if realized > 0 else "信号已成交但最终亏损。",
                 report_path=report_path,
             )
 
@@ -123,14 +144,14 @@ def _label_signal(
             horizon_days=thresholds.buy_horizon_days,
         )
         if future_return is None:
-            return SignalLabel(trade_date, action, "unclear", None, None, "No future bars in test window.", report_path)
+            return SignalLabel(trade_date, action, "unclear", None, None, "回测窗口内缺少足够的后续 K 线。", report_path)
         return SignalLabel(
             trade_date=trade_date,
             action=action,
             label="good_case" if future_return > 0 else "bad_case",
             metric_name=f"ret_{thresholds.buy_horizon_days}d_pct",
             metric_value_pct=future_return,
-            note="Buy signal was followed by price appreciation." if future_return > 0 else "Buy signal was followed by price weakness.",
+            note="买入信号后价格上涨。" if future_return > 0 else "买入信号后价格走弱。",
             report_path=report_path,
         )
 
@@ -144,16 +165,16 @@ def _label_signal(
             horizon_days=thresholds.sell_horizon_days,
         )
         if future_return is None:
-            return SignalLabel(trade_date, action, "unclear", None, None, "No future bars in test window.", report_path)
+            return SignalLabel(trade_date, action, "unclear", None, None, "回测窗口内缺少足够的后续 K 线。", report_path)
         if future_return <= thresholds.sell_good_threshold_pct:
             label = "good_case"
-            note = "Price fell after sell signal."
+            note = "卖出信号后价格下跌。"
         elif future_return >= thresholds.sell_bad_threshold_pct:
             label = "bad_case"
-            note = "Price rose after sell signal."
+            note = "卖出信号后价格上涨。"
         else:
             label = "unclear"
-            note = "Post-signal move was too small to judge."
+            note = "信号后波动幅度较小，暂不足以下结论。"
         return SignalLabel(
             trade_date=trade_date,
             action=action,
@@ -174,17 +195,17 @@ def _label_signal(
             horizon_days=thresholds.hold_horizon_days,
         )
         if future_return is None:
-            return SignalLabel(trade_date, action, "unclear", None, None, "No future bars in test window.", report_path)
+            return SignalLabel(trade_date, action, "unclear", None, None, "回测窗口内缺少足够的后续 K 线。", report_path)
         abs_return = abs(future_return)
         if abs_return <= thresholds.hold_flat_threshold_pct:
             label = "good_case"
-            note = "Hold matched sideways price action."
+            note = "观望与后续横盘走势匹配。"
         elif abs_return >= thresholds.hold_miss_threshold_pct:
             label = "bad_case"
-            note = "Hold missed a meaningful move."
+            note = "观望错过了明显行情。"
         else:
             label = "unclear"
-            note = "Move was moderate; not a clear hold success/failure."
+            note = "后续波动中等，暂不适合直接判定观望对错。"
         return SignalLabel(
             trade_date=trade_date,
             action=action,
@@ -195,7 +216,7 @@ def _label_signal(
             report_path=report_path,
         )
 
-    return SignalLabel(trade_date, action, "unclear", None, None, "Unsupported action for labeling.", report_path)
+    return SignalLabel(trade_date, action, "unclear", None, None, "当前动作暂不支持自动标注。", report_path)
 
 
 def _write_csv(path: Path, labels: list[SignalLabel]) -> None:
@@ -215,38 +236,40 @@ def _write_markdown(path: Path, labels: list[SignalLabel], thresholds: LabelThre
         counts[item.label] = counts.get(item.label, 0) + 1
 
     lines = [
-        f"# {result_dir.name} Signal Case Labels",
+        f"# {result_dir.name} 信号样本标注",
         "",
-        "## Labeling Rule",
+        "## 标注规则",
         "",
-        f"- `buy_on_pullback`: realized return if triggered; otherwise `{thresholds.buy_horizon_days}`-day future return fallback",
-        f"- `sell`: `good_case` when `ret_{thresholds.sell_horizon_days}d <= {thresholds.sell_good_threshold_pct:.1f}%`, `bad_case` when `ret_{thresholds.sell_horizon_days}d >= {thresholds.sell_bad_threshold_pct:.1f}%`",
-        f"- `hold`: `good_case` when `abs(ret_{thresholds.hold_horizon_days}d) <= {thresholds.hold_flat_threshold_pct:.1f}%`, `bad_case` when `abs(ret_{thresholds.hold_horizon_days}d) >= {thresholds.hold_miss_threshold_pct:.1f}%`",
+        f"- `择机买入`：若已成交，则使用实际收益；若未成交，则回退为 `{thresholds.buy_horizon_days}` 个交易日后的未来收益。",
+        f"- `建议卖出`：当 `ret_{thresholds.sell_horizon_days}d <= {thresholds.sell_good_threshold_pct:.1f}%` 记为“好样本”；当 `ret_{thresholds.sell_horizon_days}d >= {thresholds.sell_bad_threshold_pct:.1f}%` 记为“坏样本”。",
+        f"- `保持观望`：当 `abs(ret_{thresholds.hold_horizon_days}d) <= {thresholds.hold_flat_threshold_pct:.1f}%` 记为“好样本”；当 `abs(ret_{thresholds.hold_horizon_days}d) >= {thresholds.hold_miss_threshold_pct:.1f}%` 记为“坏样本”。",
         "",
-        "## Summary",
+        "## 汇总",
         "",
-        f"- `good_case`: {counts.get('good_case', 0)}",
-        f"- `bad_case`: {counts.get('bad_case', 0)}",
-        f"- `unclear`: {counts.get('unclear', 0)}",
+        f"- `好样本`：{counts.get('good_case', 0)}",
+        f"- `坏样本`：{counts.get('bad_case', 0)}",
+        f"- `待判断`：{counts.get('unclear', 0)}",
         "",
-        "## Daily Labels",
+        "## 每日标注",
         "",
-        "| trade_date | action | label | metric | note |",
+        "| 日期 | 动作 | 标签 | 指标 | 说明 |",
         "| --- | --- | --- | --- | --- |",
     ]
     for item in labels:
         metric = ""
         if item.metric_name and item.metric_value_pct is not None:
             metric = f"{item.metric_name}={item.metric_value_pct:.2f}%"
-        lines.append(f"| {item.trade_date} | {item.action} | {item.label} | {metric} | {item.note} |")
+        lines.append(
+            f"| {item.trade_date} | {_action_display(item.action)} | {_label_display(item.label)} | {metric} | {item.note} |"
+        )
 
     bad_cases = [item for item in labels if item.label == "bad_case"]
-    lines.extend(["", "## Immediate Bad Cases To Review", ""])
+    lines.extend(["", "## 优先复盘的坏样本", ""])
     if not bad_cases:
-        lines.append("- None")
+        lines.append("- 无")
     else:
         for item in bad_cases:
-            lines.append(f"- `{item.trade_date}` `{item.action}`")
+            lines.append(f"- `{item.trade_date}` `{_action_display(item.action)}`")
     path.write_text("\n".join(lines), encoding="utf-8")
 
 

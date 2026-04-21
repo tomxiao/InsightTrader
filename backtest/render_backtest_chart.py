@@ -86,6 +86,7 @@ def render_chart(output_dir: Path, ohlcv_csv: Path | None = None, out_path: Path
     with (output_dir / "trades.csv").open(encoding="utf-8-sig") as handle:
         trades = list(csv.DictReader(handle))
     summary = json.loads((output_dir / "summary.json").read_text(encoding="utf-8"))
+    chart_ticker = signals[0]["ticker"] if signals else output_dir.name.split("-")[-1]
 
     if out_path is None:
         out_path = output_dir / f"{output_dir.name}-bt.png"
@@ -110,7 +111,7 @@ def render_chart(output_dir: Path, ohlcv_csv: Path | None = None, out_path: Path
 
     ax_title.set_xlim(0, 1)
     ax_title.set_ylim(0, 1)
-    ax_title.text(0.0, 0.74, "AXTI 回测信号复盘", fontsize=22, fontweight="bold", color="#f3f5f7")
+    ax_title.text(0.0, 0.74, f"{chart_ticker} 回测信号复盘", fontsize=22, fontweight="bold", color="#f3f5f7")
     ax_title.text(
         0.0,
         0.34,
