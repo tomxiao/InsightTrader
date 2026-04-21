@@ -25,9 +25,9 @@
 
 例如下面这些都应该被视为不同主题：
 
-- `MU + AAOI + 2513.HK`，区间 `2026-03-02 ~ 2026-04-07`
-- `MU + AAOI`，区间 `2026-01-01 ~ 2026-04-07`
-- `MU + 2513.HK`，区间 `2026-03-02 ~ 2026-06-30`
+- `ticker 组合 A`，区间 `时间窗 A`
+- `ticker 组合 B`，区间 `时间窗 A`
+- `ticker 组合 A`，区间 `时间窗 B`
 - 同样的样本池，但从 `daily` 改成 `weekly`
 
 只要以下任一项变化，就不应继续沿用原来的连续 round 编号，而应该新开一个实验主题：
@@ -64,8 +64,8 @@ backtest/experiments/
 
 其中：
 
-- `<theme_name>`：建议显式编码样本池和区间，例如：
-  - `theme-mu-aaoi-2513hk-20260302-20260407-daily`
+- `<theme_name>`：建议显式编码样本池、区间和频率，例如：
+  - `theme-<tickers>-<start>-<end>-<freq>`
 - `theme_meta.json`：记录主题级固定上下文
 - `rounds/roundXX/`：每一轮具体实验目录
 
@@ -154,7 +154,7 @@ backtest/experiments/
 
 指某个 ticker 的 full_round 报告批次，例如：
 
-- `backtest/experiments/<theme_name>/rounds/round03/reports/MU/0421-1111-MU`
+- `backtest/experiments/<theme_name>/rounds/round01/reports/<ticker>/<batch_dir>`
 
 它提供后续 decision-only round 要复用的 `1_analysts/`。
 
@@ -164,34 +164,7 @@ backtest/experiments/
 
 - `backtest/experiments/<theme_name>/rounds/<round_name>/...`
 
-## 四、当前样本池
-
-当前多标的实验池统一为：
-
-- `MU`
-- `AAOI`
-- `2513.HK`
-
-角色分工：
-
-- `MU`：美股主样本，重点看买入门槛是否过松
-- `AAOI`：美股高波动对照样本，重点看 `sell` 是否不足
-- `2513.HK`：港股 guardrail，重点防止 prompt 被压得过度保守
-
-当前默认时间窗：
-
-- `MU`：`2026-03-02` ~ `2026-04-07`
-- `AAOI`：`2026-03-02` ~ `2026-04-07`
-- `2513.HK`：`2026-03-02` ~ `2026-04-07`
-
-当前默认采样：
-
-- `daily`
-- `step=1`
-
-如果以后调整样本池，必须同步更新本文件。
-
-## 五、实验目录结构
+## 四、实验目录结构
 
 实验目录统一放在：
 
@@ -208,11 +181,11 @@ backtest/experiments/<theme_name>/
   rounds/
     round01/
       reports/
-        MU/
+        <ticker_a>/
           <batch_dir>/
-        AAOI/
+        <ticker_b>/
           <batch_dir>/
-        2513.HK/
+        <ticker_c>/
           <batch_dir>/
       experiment_meta.json
       compare.md
@@ -229,18 +202,18 @@ backtest/experiments/<theme_name>/
 ```text
 backtest/experiments/<experiment_name>/
   reports/
-    MU/
+    <ticker_a>/
       <batch_dir>/
-    AAOI/
+    <ticker_b>/
       <batch_dir>/
-    2513.HK/
+    <ticker_c>/
       <batch_dir>/
   experiment_meta.json
   compare.md
   compare_summary.json
   compare_summary.md
   tickers/
-    MU/
+    <ticker_a>/
       batch/
         batch_metadata.json
         report_manifest.json
@@ -255,11 +228,11 @@ backtest/experiments/<experiment_name>/
         *-ohlcv.csv
         *-bt.png
       notes.md
-    AAOI/
+    <ticker_b>/
       batch/
       result/
       notes.md
-    2513.HK/
+    <ticker_c>/
       batch/
       result/
       notes.md
@@ -278,12 +251,12 @@ backtest/experiments/<experiment_name>/
 ```text
 roundXX/
   reports/
-    MU/
-      0421-1111-MU/
-    AAOI/
-      0421-1126-AAOI/
-    2513.HK/
-      0421-1140-2513HK/
+    <ticker_a>/
+      <batch_dir_a>/
+    <ticker_b>/
+      <batch_dir_b>/
+    <ticker_c>/
+      <batch_dir_c>/
 ```
 
 要求：
@@ -317,7 +290,7 @@ roundXX/
   - 该 ticker 在本轮的人工复盘结论
   - 必须填写
 
-## 六、每轮实验的固定步骤
+## 五、每轮实验的固定步骤
 
 今后默认按这 8 步执行。
 
@@ -325,13 +298,13 @@ roundXX/
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\init_experiment.py `
-  --base-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds `
+  --base-dir backtest\experiments\<theme_name>\rounds `
   --name round05 `
-  --tickers MU,AAOI,2513.HK `
-  --start-date 2026-03-02 `
-  --end-date 2026-04-07 `
-  --sample-mode daily `
-  --step 1 `
+  --tickers <ticker_a>,<ticker_b>,<ticker_c> `
+  --start-date <start_date> `
+  --end-date <end_date> `
+  --sample-mode <daily_or_weekly> `
+  --step <step_if_daily> `
   --mode decision_only_round `
   --baseline-round round04
 ```
@@ -347,26 +320,26 @@ roundXX/
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\generate_report_batch.py `
-  --ticker MU `
-  --start-date 2026-03-02 `
-  --end-date 2026-04-07 `
-  --sample-mode daily `
-  --step 1 `
-  --output-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU
+  --ticker <ticker_a> `
+  --start-date <start_date> `
+  --end-date <end_date> `
+  --sample-mode <daily_or_weekly> `
+  --step <step_if_daily> `
+  --output-dir backtest\experiments\<theme_name>\rounds\round05\reports\<ticker_a>
 ```
 
 #### decision_only_round
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\generate_report_batch.py `
-  --ticker MU `
-  --start-date 2026-03-02 `
-  --end-date 2026-04-07 `
-  --sample-mode daily `
-  --step 1 `
+  --ticker <ticker_a> `
+  --start-date <start_date> `
+  --end-date <end_date> `
+  --sample-mode <daily_or_weekly> `
+  --step <step_if_daily> `
   --decision-only `
-  --output-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU `
-  --reuse-analyst-from backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round03\reports\MU\0421-1111-MU
+  --output-dir backtest\experiments\<theme_name>\rounds\round05\reports\<ticker_a> `
+  --reuse-analyst-from backtest\experiments\<theme_name>\rounds\round01\reports\<ticker_a>\<baseline_batch_dir>
 ```
 
 decision-only 模式下：
@@ -394,22 +367,22 @@ decision-only 模式下：
 标准形式：
 
 ```powershell
-$dir = 'D:\CodeBase\InsightTrader\backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU'
+$dir = 'D:\CodeBase\InsightTrader\backtest\experiments\<theme_name>\rounds\round05\reports\<ticker_a>\<batch_dir>'
 $manifest = Import-Csv (Join-Path $dir 'report_manifest.csv')
 $reports = @()
 foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 & .\.venv\Scripts\python.exe backtest\run_report_backtest.py `
   @reports `
-  --ticker MU `
-  --end-date 2026-04-07 `
-  --max-holding-days 60
+  --ticker <ticker_a> `
+  --end-date <end_date> `
+  --max-holding-days <days>
 ```
 
 ### 5. 自动打标
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\label_signal_cases.py `
-  --result-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU
+  --result-dir backtest\experiments\<theme_name>\rounds\round05\reports\<ticker_a>\<batch_dir>
 ```
 
 ### 6. 出图
@@ -419,8 +392,8 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\render_backtest_chart.py `
-  --output-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU `
-  --out backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05\reports\MU\0421-1300-MU\0421-1300-MU-bt.png
+  --output-dir backtest\experiments\<theme_name>\rounds\round05\reports\<ticker_a>\<batch_dir> `
+  --out backtest\experiments\<theme_name>\rounds\round05\reports\<ticker_a>\<batch_dir>\<batch_dir>-bt.png
 ```
 
 规则：
@@ -458,10 +431,10 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 
 ```powershell
 .\.venv\Scripts\python.exe backtest\summarize_experiment.py `
-  --experiment-dir backtest\experiments\theme-mu-aaoi-2513hk-20260302-20260407-daily\rounds\round05
+  --experiment-dir backtest\experiments\<theme_name>\rounds\round05
 ```
 
-## 七、每轮实验必须填写的人工输出
+## 六、每轮实验必须填写的人工输出
 
 这部分不能留空模板。
 
@@ -485,7 +458,7 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 
 如果 `notes.md` 和 `compare.md` 没填，这轮实验就不算真正收尾。
 
-## 八、结果阅读顺序
+## 七、结果阅读顺序
 
 ### 第一层：先看结构
 
@@ -528,7 +501,7 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 - 哪些表述导致该卖不卖
 - 哪些表述让港股样本被压得过度保守
 
-## 九、结果分析与调优方法
+## 八、结果分析与调优方法
 
 ### 1. 不要只看 `summary.json`
 
@@ -612,10 +585,7 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 
 每次调优后，先回归当前主题样本池，再决定是否引入新主题。
 
-如果一个改动只改善了 `MU`，却让：
-
-- `AAOI` 明显变差
-- `2513.HK` 大量塌回 `hold`
+如果一个改动只改善了某一只样本，却让其他样本明显变差：
 
 那就不应该继续放大。
 
@@ -627,7 +597,7 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 
 如果这 3 个问题答不清，就不要直接进入下一轮。
 
-## 十、当前已验证的坑
+## 九、当前已验证的坑
 
 ### 1. `run_report_backtest.py` 必须传 `--ticker`
 
@@ -636,7 +606,7 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 ### 2. 图标题不能写死 ticker
 
 标题必须从当前批次结果动态读取。  
-否则不同 ticker 的图会错误显示成 `AXTI`。
+否则不同 ticker 的图会错误显示成上一次运行的标的。
 
 ### 3. 收编 experiment 目录时，图要同步覆盖
 
@@ -664,7 +634,7 @@ foreach ($row in $manifest) { $reports += @('--report', $row.decision_path) }
 
 来补图。
 
-## 十一、推荐执行节奏
+## 十、推荐执行节奏
 
 以后默认按下面节奏推进：
 
