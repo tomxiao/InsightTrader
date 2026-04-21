@@ -1,0 +1,27 @@
+﻿trade_date,action,label,metric_name,metric_value_pct,note,report_path
+2026-03-02,buy_on_pullback,bad_case,realized_return_pct,-8.046,Triggered and lost money.,backtest\output\0420-1455-AXTI\reports\2026-0302-AXTI\2_decision\summary.md
+2026-03-03,buy_on_pullback,bad_case,ret_3d_pct,-30.1166,Buy signal was followed by price weakness.,backtest\output\0420-1455-AXTI\reports\2026-0303-AXTI\2_decision\summary.md
+2026-03-04,hold,bad_case,ret_3d_pct,-7.6628,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0304-AXTI\2_decision\summary.md
+2026-03-05,sell,bad_case,ret_3d_pct,13.2124,Price rose after sell signal.,backtest\output\0420-1455-AXTI\reports\2026-0305-AXTI\2_decision\summary.md
+2026-03-06,hold,bad_case,ret_3d_pct,22.0933,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0306-AXTI\2_decision\summary.md
+2026-03-09,hold,bad_case,ret_3d_pct,44.3621,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0309-AXTI\2_decision\summary.md
+2026-03-10,hold,bad_case,ret_3d_pct,26.7116,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0310-AXTI\2_decision\summary.md
+2026-03-11,buy_on_pullback,good_case,realized_return_pct,13.65,Triggered and exited profitable.,backtest\output\0420-1455-AXTI\reports\2026-0311-AXTI\2_decision\summary.md
+2026-03-12,buy_on_pullback,bad_case,ret_3d_pct,-6.3345,Buy signal was followed by price weakness.,backtest\output\0420-1455-AXTI\reports\2026-0312-AXTI\2_decision\summary.md
+2026-03-13,buy_on_pullback,good_case,realized_return_pct,7.1917,Triggered and exited profitable.,backtest\output\0420-1455-AXTI\reports\2026-0313-AXTI\2_decision\summary.md
+2026-03-16,buy_on_pullback,good_case,ret_3d_pct,18.8907,Buy signal was followed by price appreciation.,backtest\output\0420-1455-AXTI\reports\2026-0316-AXTI\2_decision\summary.md
+2026-03-17,buy_on_pullback,good_case,realized_return_pct,2.6185,Triggered and exited profitable.,backtest\output\0420-1455-AXTI\reports\2026-0317-AXTI\2_decision\summary.md
+2026-03-18,hold,bad_case,ret_3d_pct,45.266,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0318-AXTI\2_decision\summary.md
+2026-03-19,hold,bad_case,ret_3d_pct,40.361,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0319-AXTI\2_decision\summary.md
+2026-03-20,buy_on_pullback,good_case,ret_3d_pct,15.9408,Buy signal was followed by price appreciation.,backtest\output\0420-1455-AXTI\reports\2026-0320-AXTI\2_decision\summary.md
+2026-03-23,buy_on_pullback,bad_case,realized_return_pct,-13.4777,Triggered and lost money.,backtest\output\0420-1455-AXTI\reports\2026-0323-AXTI\2_decision\summary.md
+2026-03-24,buy_on_pullback,bad_case,realized_return_pct,-11.7647,Triggered and lost money.,backtest\output\0420-1455-AXTI\reports\2026-0324-AXTI\2_decision\summary.md
+2026-03-25,sell,good_case,ret_3d_pct,-22.9544,Price fell after sell signal.,backtest\output\0420-1455-AXTI\reports\2026-0325-AXTI\2_decision\summary.md
+2026-03-26,sell,good_case,ret_3d_pct,-15.3972,Price fell after sell signal.,backtest\output\0420-1455-AXTI\reports\2026-0326-AXTI\2_decision\summary.md
+2026-03-27,sell,good_case,ret_3d_pct,-19.4326,Price fell after sell signal.,backtest\output\0420-1455-AXTI\reports\2026-0327-AXTI\2_decision\summary.md
+2026-03-30,buy_on_pullback,bad_case,ret_3d_pct,-12.8484,Buy signal was followed by price weakness.,backtest\output\0420-1455-AXTI\reports\2026-0330-AXTI\2_decision\summary.md
+2026-03-31,hold,bad_case,ret_3d_pct,-20.3679,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0331-AXTI\2_decision\summary.md
+2026-04-01,hold,bad_case,ret_3d_pct,-20.2176,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0401-AXTI\2_decision\summary.md
+2026-04-02,hold,unclear,ret_3d_pct,-3.5639,Move was moderate; not a clear hold success/failure.,backtest\output\0420-1455-AXTI\reports\2026-0402-AXTI\2_decision\summary.md
+2026-04-06,hold,bad_case,ret_3d_pct,-13.9667,Hold missed a meaningful move.,backtest\output\0420-1455-AXTI\reports\2026-0406-AXTI\2_decision\summary.md
+2026-04-07,sell,unclear,,,No future bars in test window.,backtest\output\0420-1455-AXTI\reports\2026-0407-AXTI\2_decision\summary.md
