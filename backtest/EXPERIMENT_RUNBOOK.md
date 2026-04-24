@@ -272,6 +272,10 @@ roundXX/
   - 记录实验元信息
   - 至少包含：`name`、`tickers`、`start_date`、`end_date`、`sample_mode`、`step`、`mode`、`baseline_round`
 
+- `decision_manager_prompt_snapshot.md`
+  - 记录本轮开始时 `decision manager` 的 prompt 快照
+  - 用于复盘“这一轮到底是在什么 prompt 版本上跑出来的”
+
 - `compare.md`
   - 这一轮的人工总结
   - 不是模板占位，必须填写
@@ -313,6 +317,7 @@ roundXX/
 
 - `mode=full_round` 时，`baseline_round` 可空
 - `mode=decision_only_round` 时，`baseline_round` 必填
+- 初始化完成后，必须确认 round 根目录下已生成 `decision_manager_prompt_snapshot.md`
 
 ### 2. 生成报告批次
 

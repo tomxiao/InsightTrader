@@ -1,0 +1,76 @@
+{
+  "by_scenario_type": [
+    {
+      "bucket": "公司催化趋势型",
+      "signal_count": 39,
+      "good_case": 18,
+      "bad_case": 17,
+      "unclear": 4,
+      "actions": {
+        "buy_on_pullback": 37,
+        "hold": 2
+      },
+      "accuracy": 0.5142857142857142
+    },
+    {
+      "bucket": "催化后高波动整理型",
+      "signal_count": 20,
+      "good_case": 4,
+      "bad_case": 14,
+      "unclear": 2,
+      "actions": {
+        "hold": 15,
+        "sell": 5
+      },
+      "accuracy": 0.2222222222222222
+    },
+    {
+      "bucket": "Beta情绪技术驱动型",
+      "signal_count": 17,
+      "good_case": 5,
+      "bad_case": 8,
+      "unclear": 4,
+      "actions": {
+        "sell": 3,
+        "buy_on_pullback": 9,
+        "hold": 5
+      },
+      "accuracy": 0.38461538461538464
+    }
+  ],
+  "by_trend_judgment": [
+    {
+      "bucket": "趋势延续",
+      "signal_count": 46,
+      "good_case": 22,
+      "bad_case": 17,
+      "unclear": 7,
+      "actions": {
+        "buy_on_pullback": 46
+      },
+      "accuracy": 0.5641025641025641
+    },
+    {
+      "bucket": "震荡等待确认",
+      "signal_count": 22,
+      "good_case": 2,
+      "bad_case": 18,
+      "unclear": 2,
+      "actions": {
+        "hold": 22
+      },
+      "accuracy": 0.1
+    },
+    {
+      "bucket": "风险主导",
+      "signal_count": 8,
+      "good_case": 3,
+      "bad_case": 4,
+      "unclear": 1,
+      "actions": {
+        "sell": 8
+      },
+      "accuracy": 0.42857142857142855
+    }
+  ]
+}

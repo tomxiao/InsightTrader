@@ -1,12 +1,14 @@
 {
-  "result_dir": "backtest\\output\\0421-1126-AAOI",
+  "result_dir": "D:\\CodeBase\\InsightTrader\\backtest\\experiments\\theme-mu-aaoi-2513hk-20260302-20260407-daily\\rounds\\round03\\reports\\AAOI\\0421-1126-AAOI",
   "label_counts": {
-    "good_case": 5,
-    "bad_case": 20,
-    "unclear": 1
+    "good_case": 6,
+    "bad_case": 18,
+    "unclear": 2
   },
   "thresholds": {
     "buy_horizon_days": 3,
+    "buy_good_threshold_pct": 2.0,
+    "buy_bad_threshold_pct": -2.0,
     "sell_horizon_days": 3,
     "hold_horizon_days": 3,
     "sell_good_threshold_pct": -2.0,

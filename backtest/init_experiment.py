@@ -2,12 +2,51 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from tradingagents.agents.managers.decision_manager import build_decision_manager_prompt
 
 
 def _default_experiment_name() -> str:
     return datetime.now().strftime("%Y-%m%d-round01")
+
+
+def _write_decision_manager_prompt_snapshot(experiment_dir: Path) -> None:
+    prompt_snapshot = build_decision_manager_prompt(
+        instrument="{{instrument}}",
+        trade_date="{{trade_date}}",
+        market_report="{{market_report}}",
+        news_report="{{news_report}}",
+        fundamentals_report="{{fundamentals_report}}",
+    )
+    snapshot_lines = [
+        "# Decision Manager Prompt Snapshot",
+        "",
+        "这个文件记录当前 round 初始化时的 `decision manager` prompt 模板。",
+        "其中动态字段使用占位符保留，便于后续复盘 prompt 版本与 round 结果的对应关系。",
+        "",
+        "## Source",
+        "",
+        "- file: `tradingagents/agents/managers/decision_manager.py`",
+        f"- captured_at: `{datetime.now().isoformat(timespec='seconds')}`",
+        "",
+        "## Prompt",
+        "",
+        "```text",
+        prompt_snapshot,
+        "```",
+        "",
+    ]
+    (experiment_dir / "decision_manager_prompt_snapshot.md").write_text(
+        "\n".join(snapshot_lines),
+        encoding="utf-8",
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,6 +119,7 @@ def main() -> int:
         json.dumps(experiment_meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
+    _write_decision_manager_prompt_snapshot(experiment_dir)
 
     compare_stub = [
         f"# {args.name}",

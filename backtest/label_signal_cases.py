@@ -10,6 +10,8 @@ from pathlib import Path
 @dataclass(frozen=True)
 class LabelThresholds:
     buy_horizon_days: int
+    buy_good_threshold_pct: float
+    buy_bad_threshold_pct: float
     sell_horizon_days: int
     hold_horizon_days: int
     sell_good_threshold_pct: float
@@ -60,6 +62,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Label daily backtest signals as good_case, bad_case, or unclear.")
     parser.add_argument("--result-dir", required=True, help="Directory containing signals.csv, trades.csv, summary.json, and *-ohlcv.csv.")
     parser.add_argument("--buy-horizon-days", type=int, default=3, help="Future trading days used for buy labels when realized return is unavailable.")
+    parser.add_argument("--buy-good-threshold-pct", type=float, default=2.0, help="buy is good when ret_Nd is at or above this threshold.")
+    parser.add_argument("--buy-bad-threshold-pct", type=float, default=-2.0, help="buy is bad when ret_Nd is at or below this threshold.")
     parser.add_argument("--sell-horizon-days", type=int, default=3, help="Future trading days used for sell labels.")
     parser.add_argument("--hold-horizon-days", type=int, default=3, help="Future trading days used for hold labels.")
     parser.add_argument("--sell-good-threshold-pct", type=float, default=-2.0, help="sell is good when ret_Nd is at or below this threshold.")
@@ -81,7 +85,7 @@ def _find_ohlcv_csv(result_dir: Path) -> Path:
     return matches[0]
 
 
-def _future_return_pct(
+def _future_average_return_pct(
     *,
     price_by_date: dict[str, dict[str, str]],
     ordered_dates: list[str],
@@ -96,9 +100,10 @@ def _future_return_pct(
     future_dates = ordered_dates[start_index + 1 : start_index + 1 + max(horizon_days, 0)]
     if not future_dates:
         return None, None
+    future_closes = [float(price_by_date[future_date]["Close"]) for future_date in future_dates]
+    average_close = sum(future_closes) / len(future_closes)
     end_date = future_dates[-1]
-    end_close = float(price_by_date[end_date]["Close"])
-    return ((end_close / reference_price) - 1.0) * 100.0, end_date
+    return ((average_close / reference_price) - 1.0) * 100.0, end_date
 
 
 def _label_signal(
@@ -114,28 +119,13 @@ def _label_signal(
     action = signal["action"]
     report_path = signal.get("report_path")
 
-    if action == "buy_on_pullback" and trade_row:
-        status = (trade_row.get("status") or "").strip()
-        realized_return = trade_row.get("return_pct")
-        if status == "triggered" and realized_return not in {"", None}:
-            realized = float(realized_return)
-            return SignalLabel(
-                trade_date=trade_date,
-                action=action,
-                label="good_case" if realized > 0 else "bad_case",
-                metric_name="realized_return_pct",
-                metric_value_pct=realized,
-                note="信号已成交且最终盈利。" if realized > 0 else "信号已成交但最终亏损。",
-                report_path=report_path,
-            )
-
     raw_reference = signal.get("reference_price")
     if raw_reference in {"", None}:
         raw_reference = price_by_date[trade_date]["Close"]
     reference_price = float(raw_reference)
 
     if action == "buy_on_pullback":
-        future_return, _ = _future_return_pct(
+        future_return, _ = _future_average_return_pct(
             price_by_date=price_by_date,
             ordered_dates=ordered_dates,
             date_index=date_index,
@@ -145,18 +135,27 @@ def _label_signal(
         )
         if future_return is None:
             return SignalLabel(trade_date, action, "unclear", None, None, "回测窗口内缺少足够的后续 K 线。", report_path)
+        if future_return >= thresholds.buy_good_threshold_pct:
+            label = "good_case"
+            note = "买入信号后短期价格明显上涨。"
+        elif future_return <= thresholds.buy_bad_threshold_pct:
+            label = "bad_case"
+            note = "买入信号后短期价格明显走弱。"
+        else:
+            label = "unclear"
+            note = "买入信号后波动幅度较小，暂不足以下结论。"
         return SignalLabel(
             trade_date=trade_date,
             action=action,
-            label="good_case" if future_return > 0 else "bad_case",
-            metric_name=f"ret_{thresholds.buy_horizon_days}d_pct",
+            label=label,
+            metric_name=f"avg_ret_{thresholds.buy_horizon_days}d_pct",
             metric_value_pct=future_return,
-            note="买入信号后价格上涨。" if future_return > 0 else "买入信号后价格走弱。",
+            note=note,
             report_path=report_path,
         )
 
     if action == "sell":
-        future_return, _ = _future_return_pct(
+        future_return, _ = _future_average_return_pct(
             price_by_date=price_by_date,
             ordered_dates=ordered_dates,
             date_index=date_index,
@@ -179,14 +178,14 @@ def _label_signal(
             trade_date=trade_date,
             action=action,
             label=label,
-            metric_name=f"ret_{thresholds.sell_horizon_days}d_pct",
+            metric_name=f"avg_ret_{thresholds.sell_horizon_days}d_pct",
             metric_value_pct=future_return,
             note=note,
             report_path=report_path,
         )
 
     if action == "hold":
-        future_return, _ = _future_return_pct(
+        future_return, _ = _future_average_return_pct(
             price_by_date=price_by_date,
             ordered_dates=ordered_dates,
             date_index=date_index,
@@ -210,7 +209,7 @@ def _label_signal(
             trade_date=trade_date,
             action=action,
             label=label,
-            metric_name=f"ret_{thresholds.hold_horizon_days}d_pct",
+            metric_name=f"avg_ret_{thresholds.hold_horizon_days}d_pct",
             metric_value_pct=future_return,
             note=note,
             report_path=report_path,
@@ -240,9 +239,10 @@ def _write_markdown(path: Path, labels: list[SignalLabel], thresholds: LabelThre
         "",
         "## 标注规则",
         "",
-        f"- `择机买入`：若已成交，则使用实际收益；若未成交，则回退为 `{thresholds.buy_horizon_days}` 个交易日后的未来收益。",
-        f"- `建议卖出`：当 `ret_{thresholds.sell_horizon_days}d <= {thresholds.sell_good_threshold_pct:.1f}%` 记为“好样本”；当 `ret_{thresholds.sell_horizon_days}d >= {thresholds.sell_bad_threshold_pct:.1f}%` 记为“坏样本”。",
-        f"- `保持观望`：当 `abs(ret_{thresholds.hold_horizon_days}d) <= {thresholds.hold_flat_threshold_pct:.1f}%` 记为“好样本”；当 `abs(ret_{thresholds.hold_horizon_days}d) >= {thresholds.hold_miss_threshold_pct:.1f}%` 记为“坏样本”。",
+        f"- `择机买入`：使用未来 `{thresholds.buy_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.buy_horizon_days}d`；当 `avg_ret_{thresholds.buy_horizon_days}d >= {thresholds.buy_good_threshold_pct:.1f}%` 记为“好样本”；当 `avg_ret_{thresholds.buy_horizon_days}d <= {thresholds.buy_bad_threshold_pct:.1f}%` 记为“坏样本”。",
+        f"- `建议卖出`：使用未来 `{thresholds.sell_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.sell_horizon_days}d`；当 `avg_ret_{thresholds.sell_horizon_days}d <= {thresholds.sell_good_threshold_pct:.1f}%` 记为“好样本”；当 `avg_ret_{thresholds.sell_horizon_days}d >= {thresholds.sell_bad_threshold_pct:.1f}%` 记为“坏样本”。",
+        f"- `保持观望`：使用未来 `{thresholds.hold_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.hold_horizon_days}d`；当 `abs(avg_ret_{thresholds.hold_horizon_days}d) <= {thresholds.hold_flat_threshold_pct:.1f}%` 记为“好样本”；当 `abs(avg_ret_{thresholds.hold_horizon_days}d) >= {thresholds.hold_miss_threshold_pct:.1f}%` 记为“坏样本”。",
+        "- 当前标签体系只判断信号方向是否与后续短期平均价格方向一致，不评估成交质量、入场区间或执行结果。",
         "",
         "## 汇总",
         "",
@@ -278,6 +278,8 @@ def main() -> int:
     result_dir = Path(args.result_dir)
     thresholds = LabelThresholds(
         buy_horizon_days=args.buy_horizon_days,
+        buy_good_threshold_pct=args.buy_good_threshold_pct,
+        buy_bad_threshold_pct=args.buy_bad_threshold_pct,
         sell_horizon_days=args.sell_horizon_days,
         hold_horizon_days=args.hold_horizon_days,
         sell_good_threshold_pct=args.sell_good_threshold_pct,

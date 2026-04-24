@@ -9,6 +9,11 @@ class ReportSignal:
     ticker: str
     trade_date: str
     action: str
+    trend_judgment: str | None
+    scenario_type: str | None
+    primary_driver: str | None
+    trend_integrity: str | None
+    risk_state: str | None
     reference_price: float | None
     reference_price_text: str | None
     entry_style: str | None

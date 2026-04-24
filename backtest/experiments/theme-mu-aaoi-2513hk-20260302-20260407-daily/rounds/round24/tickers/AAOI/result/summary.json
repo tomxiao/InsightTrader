@@ -1,0 +1,24 @@
+{
+  "signal_count": 26,
+  "trade_count": 11,
+  "triggered_trade_count": 11,
+  "win_rate": 18.1818,
+  "avg_return": 2.1456,
+  "median_return": -9.0909,
+  "max_return": 57.2842,
+  "min_return": -14.6768,
+  "by_action": {
+    "buy_on_pullback": {
+      "signal_count": 20,
+      "trade_count": 11,
+      "win_rate": 18.1818,
+      "avg_return": 2.1456
+    },
+    "hold": {
+      "signal_count": 6,
+      "trade_count": 0,
+      "win_rate": null,
+      "avg_return": null
+    }
+  }
+}

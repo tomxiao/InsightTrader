@@ -10,5 +10,12 @@
     "AAOI",
     "2513.HK"
   ],
-  "goal": "围绕 decision manager 做多标的动作边界调优：收紧弱证据买入、补足风险主导卖出，并用港股样本防止整体过度保守或过度激进。"
+  "goal": "把当前主题下的纯信号方向准确率提升到55%，统一口径为 accuracy = good / (good + bad)，并使用未来3个交易日收盘均价进行方向打标；先围绕 decision manager 优化信号方向，再进入价格区间与执行质量阶段。",
+  "accuracy_definition": "accuracy = good / (good + bad), where labels are based on average close return over the next 3 trading days",
+  "current_signal_baseline_round": "round08",
+  "current_signal_baseline": {
+    "good": 26,
+    "bad": 37,
+    "accuracy": 0.4127
+  }
 }

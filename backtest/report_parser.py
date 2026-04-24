@@ -23,6 +23,14 @@ def _field_pattern(label: str, value_pattern: str, *, multiline: bool = False) -
 FIELD_PATTERNS = {
     "trade_date": _field_pattern("分析日期", r"([0-9]{4}-[0-9]{2}-[0-9]{2})"),
     "reference_price": _field_pattern("截面价格", r"([^\n]+)"),
+    "scenario_type": _field_pattern("样本分型", r"([^\n]+)"),
+    "primary_driver": _field_pattern("主导驱动", r"([^\n]+)"),
+    "trend_integrity": _field_pattern("趋势完整性", r"([^\n]+)"),
+    "risk_state": _field_pattern("风险状态", r"([^\n]+)"),
+    "trend_judgment": _field_pattern(
+        "趋势判断",
+        r"\*{0,2}\s*(趋势延续|震荡等待确认|风险主导)\s*\*{0,2}(?=\s*(?:\n|$))",
+    ),
     "action": _field_pattern(
         "建议行动",
         r"\*{0,2}\s*(确信买入|择机买入|保持观望|建议卖出)\s*\*{0,2}(?=\s*(?:\n|$))",
@@ -59,6 +67,13 @@ def _extract_field(pattern: re.Pattern[str], text: str) -> str | None:
 
 
 def _normalize_action_text(value: str | None) -> str | None:
+    if value is None:
+        return None
+    return value.replace("*", "").strip()
+
+
+def _extract_plain_field(name: str, text: str) -> str | None:
+    value = _extract_field(FIELD_PATTERNS[name], text)
     if value is None:
         return None
     return value.replace("*", "").strip()
@@ -123,6 +138,11 @@ def infer_ticker_from_report_path(path: Path) -> str:
 
 def parse_report_text(text: str, *, ticker: str, report_path: Path | None = None) -> ReportSignal:
     trade_date = _extract_field(FIELD_PATTERNS["trade_date"], text)
+    trend_judgment = _extract_plain_field("trend_judgment", text)
+    scenario_type = _extract_plain_field("scenario_type", text)
+    primary_driver = _extract_plain_field("primary_driver", text)
+    trend_integrity = _extract_plain_field("trend_integrity", text)
+    risk_state = _extract_plain_field("risk_state", text)
     action_text = _normalize_action_text(_extract_field(FIELD_PATTERNS["action"], text))
     if not trade_date:
         raise ValueError("Report is missing `分析日期`")
@@ -139,6 +159,11 @@ def parse_report_text(text: str, *, ticker: str, report_path: Path | None = None
         ticker=ticker.upper(),
         trade_date=trade_date,
         action=ACTION_MAP[action_text],
+        trend_judgment=trend_judgment,
+        scenario_type=scenario_type,
+        primary_driver=primary_driver,
+        trend_integrity=trend_integrity,
+        risk_state=risk_state,
         reference_price=reference_price,
         reference_price_text=reference_price_text,
         entry_style=entry_style,
