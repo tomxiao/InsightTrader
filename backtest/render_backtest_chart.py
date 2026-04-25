@@ -15,6 +15,9 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
 
+BUY_ACTIONS = {"buy_now", "buy_on_pullback"}
+
+
 def _pick_cjk_font() -> None:
     candidates = [
         "Microsoft YaHei",
@@ -162,7 +165,7 @@ def render_chart(output_dir: Path, ohlcv_csv: Path | None = None, out_path: Path
             continue
         x = x_map[signal_date]
         day = ohlcv.loc[ohlcv["Date"] == signal_date].iloc[0]
-        if row["action"] == "buy_on_pullback":
+        if row["action"] in BUY_ACTIONS:
             ax.scatter(x, day["Low"] - 1.1, marker="^", s=62, color=up_fill, zorder=4)
         elif row["action"] == "sell":
             ax.scatter(x, day["High"] + 1.1, marker="v", s=62, color=down_fill, zorder=4)
@@ -214,7 +217,7 @@ def render_chart(output_dir: Path, ohlcv_csv: Path | None = None, out_path: Path
                 )
 
     for row in trades:
-        if row["action"] == "buy_on_pullback" and row["entry_date"] and row["trade_date"] != row["entry_date"]:
+        if row["action"] in BUY_ACTIONS and row["entry_date"] and row["trade_date"] != row["entry_date"]:
             signal_date = pd.to_datetime(row["trade_date"])
             entry_date = pd.to_datetime(row["entry_date"])
             if signal_date in x_map and entry_date in x_map:
@@ -321,7 +324,8 @@ def render_chart(output_dir: Path, ohlcv_csv: Path | None = None, out_path: Path
 
     by_action = summary["by_action"]
     ax_perf.text(0.08, 0.24, "动作分布", fontsize=11, fontweight="bold", color=text_main)
-    ax_perf.text(0.08, 0.20, f"择机买入  {by_action.get('buy_on_pullback', {}).get('signal_count')}", fontsize=10.5, color="#d8dee7")
+    buy_count = sum(by_action.get(action, {}).get("signal_count", 0) or 0 for action in BUY_ACTIONS)
+    ax_perf.text(0.08, 0.20, f"买入信号  {buy_count}", fontsize=10.5, color="#d8dee7")
     ax_perf.text(0.08, 0.16, f"保持观望  {by_action.get('hold', {}).get('signal_count')}", fontsize=10.5, color="#d8dee7")
     ax_perf.text(0.08, 0.12, f"建议卖出  {by_action.get('sell', {}).get('signal_count')}", fontsize=10.5, color="#d8dee7")
 

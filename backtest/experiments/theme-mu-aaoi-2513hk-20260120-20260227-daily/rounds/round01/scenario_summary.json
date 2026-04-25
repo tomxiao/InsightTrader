@@ -1,0 +1,165 @@
+{
+  "by_scenario_type": [
+    {
+      "bucket": "公司催化趋势型",
+      "signal_count": 45,
+      "good_case": 24,
+      "bad_case": 10,
+      "unclear": 11,
+      "actions": {
+        "hold": 3,
+        "buy_on_pullback": 41,
+        "sell": 1
+      },
+      "accuracy": 0.7058823529411765
+    },
+    {
+      "bucket": "催化后高波动整理型",
+      "signal_count": 23,
+      "good_case": 9,
+      "bad_case": 9,
+      "unclear": 5,
+      "actions": {
+        "buy_on_pullback": 18,
+        "hold": 3,
+        "sell": 2
+      },
+      "accuracy": 0.5
+    },
+    {
+      "bucket": "Beta情绪技术驱动型",
+      "signal_count": 13,
+      "good_case": 2,
+      "bad_case": 8,
+      "unclear": 3,
+      "actions": {
+        "buy_on_pullback": 6,
+        "hold": 6,
+        "sell": 1
+      },
+      "accuracy": 0.2
+    },
+    {
+      "bucket": "催化剂后高波动整理型",
+      "signal_count": 1,
+      "good_case": 0,
+      "bad_case": 1,
+      "unclear": 0,
+      "actions": {
+        "buy_on_pullback": 1
+      },
+      "accuracy": 0.0
+    }
+  ],
+  "by_trend_judgment": [
+    {
+      "bucket": "趋势延续",
+      "signal_count": 66,
+      "good_case": 33,
+      "bad_case": 19,
+      "unclear": 14,
+      "actions": {
+        "buy_on_pullback": 66
+      },
+      "accuracy": 0.6346153846153846
+    },
+    {
+      "bucket": "震荡等待确认",
+      "signal_count": 12,
+      "good_case": 2,
+      "bad_case": 7,
+      "unclear": 3,
+      "actions": {
+        "hold": 12
+      },
+      "accuracy": 0.2222222222222222
+    },
+    {
+      "bucket": "风险主导",
+      "signal_count": 4,
+      "good_case": 0,
+      "bad_case": 2,
+      "unclear": 2,
+      "actions": {
+        "sell": 4
+      },
+      "accuracy": 0.0
+    }
+  ],
+  "by_direction_bias": [
+    {
+      "bucket": "看多",
+      "signal_count": 58,
+      "good_case": 28,
+      "bad_case": 18,
+      "unclear": 12,
+      "actions": {
+        "buy_on_pullback": 57,
+        "hold": 1
+      },
+      "accuracy": 0.6086956521739131
+    },
+    {
+      "bucket": "中性",
+      "signal_count": 20,
+      "good_case": 7,
+      "bad_case": 8,
+      "unclear": 5,
+      "actions": {
+        "hold": 11,
+        "buy_on_pullback": 9
+      },
+      "accuracy": 0.4666666666666667
+    },
+    {
+      "bucket": "看空",
+      "signal_count": 4,
+      "good_case": 0,
+      "bad_case": 2,
+      "unclear": 2,
+      "actions": {
+        "sell": 4
+      },
+      "accuracy": 0.0
+    }
+  ],
+  "by_entry_posture": [
+    {
+      "bucket": "等待回调",
+      "signal_count": 60,
+      "good_case": 29,
+      "bad_case": 18,
+      "unclear": 13,
+      "actions": {
+        "buy_on_pullback": 58,
+        "hold": 2
+      },
+      "accuracy": 0.6170212765957447
+    },
+    {
+      "bucket": "暂不参与",
+      "signal_count": 14,
+      "good_case": 4,
+      "bad_case": 7,
+      "unclear": 3,
+      "actions": {
+        "hold": 7,
+        "buy_on_pullback": 3,
+        "sell": 4
+      },
+      "accuracy": 0.36363636363636365
+    },
+    {
+      "bucket": "等待确认",
+      "signal_count": 8,
+      "good_case": 2,
+      "bad_case": 3,
+      "unclear": 3,
+      "actions": {
+        "hold": 3,
+        "buy_on_pullback": 5
+      },
+      "accuracy": 0.4
+    }
+  ]
+}

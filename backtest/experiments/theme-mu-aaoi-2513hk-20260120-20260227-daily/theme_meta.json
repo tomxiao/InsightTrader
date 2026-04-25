@@ -1,0 +1,26 @@
+{
+  "theme_name": "theme-mu-aaoi-2513hk-20260120-20260227-daily",
+  "display_name": "MU + AAOI + 2513.HK（2026-01-20 ~ 2026-02-27，日频）",
+  "start_date": "2026-01-20",
+  "end_date": "2026-02-27",
+  "sample_mode": "daily",
+  "step": 1,
+  "tickers": [
+    "MU",
+    "AAOI",
+    "2513.HK"
+  ],
+  "theme_type": "time_out_of_sample_validation",
+  "goal": "在保持标的池 MU / AAOI / 2513.HK 不变的前提下，对 round30 形成的 evidence + rules 信号决策体系做时间外验证，先确认方向准确率是否具备跨时间窗稳定性，再决定是否进入价格区间与执行质量优化阶段。",
+  "accuracy_definition": "accuracy = good / (good + bad), where labels are based on average close return over the next 3 trading days",
+  "source_theme": "theme-mu-aaoi-2513hk-20260302-20260407-daily",
+  "source_baseline_round": "round30",
+  "source_baseline_accuracy": 0.576,
+  "current_theme_baseline_round": "round01",
+  "current_theme_baseline": {
+    "good": 35,
+    "bad": 28,
+    "accuracy": 0.556
+  },
+  "status": "baseline_established"
+}

@@ -1,0 +1,14 @@
+{
+  "name": "round01",
+  "start_date": "2026-01-20",
+  "end_date": "2026-02-27",
+  "sample_mode": "daily",
+  "step": 1,
+  "tickers": [
+    "MU",
+    "AAOI",
+    "2513.HK"
+  ],
+  "mode": "full_round",
+  "baseline_round": null
+}

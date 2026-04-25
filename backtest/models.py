@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from .decision_rules import SignalEvidence
+
 
 @dataclass(frozen=True)
 class ReportSignal:
@@ -10,8 +12,12 @@ class ReportSignal:
     trade_date: str
     action: str
     trend_judgment: str | None
+    report_action: str | None
+    report_trend_judgment: str | None
+    decision_source: str | None
     scenario_type: str | None
     primary_driver: str | None
+    evidence: SignalEvidence
     trend_integrity: str | None
     risk_state: str | None
     reference_price: float | None
@@ -25,6 +31,8 @@ class ReportSignal:
 
     def to_dict(self) -> dict:
         payload = asdict(self)
+        evidence_payload = payload.pop("evidence", {}) or {}
+        payload.update(evidence_payload)
         payload["report_path"] = str(self.report_path) if self.report_path else None
         return payload
 

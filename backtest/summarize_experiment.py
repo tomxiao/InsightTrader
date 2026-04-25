@@ -36,6 +36,10 @@ def _count_actions(signals_csv: Path) -> dict[str, int]:
     return counts
 
 
+def _buy_signal_count(counts: dict[str, int]) -> int:
+    return counts.get("buy_now", 0) + counts.get("buy_on_pullback", 0)
+
+
 def _count_statuses(trades_csv: Path) -> dict[str, int]:
     counts: dict[str, int] = {}
     for row in _read_csv_rows(trades_csv):
@@ -144,7 +148,7 @@ def main() -> int:
                 "triggered_trade_count": summary.get("triggered_trade_count"),
                 "win_rate": summary.get("win_rate"),
                 "avg_return": summary.get("avg_return"),
-                "buy_signals": action_counts.get("buy_on_pullback", 0),
+                "buy_signals": _buy_signal_count(action_counts),
                 "hold_signals": action_counts.get("hold", 0),
                 "sell_signals": action_counts.get("sell", 0),
                 "good_case": label_counts.get("good_case", 0),
@@ -175,11 +179,15 @@ def main() -> int:
 
     scenario_rows = _build_bucket_summary(scenario_input_rows, field_name="scenario_type")
     trend_rows = _build_bucket_summary(scenario_input_rows, field_name="trend_judgment")
+    direction_rows = _build_bucket_summary(scenario_input_rows, field_name="direction_bias")
+    posture_rows = _build_bucket_summary(scenario_input_rows, field_name="entry_posture")
     scenario_json.write_text(
         json.dumps(
             {
                 "by_scenario_type": scenario_rows,
                 "by_trend_judgment": trend_rows,
+                "by_direction_bias": direction_rows,
+                "by_entry_posture": posture_rows,
             },
             ensure_ascii=False,
             indent=2,
@@ -190,7 +198,7 @@ def main() -> int:
     lines = [
         f"# {experiment_dir.name} 跨标的汇总",
         "",
-        "| 标的 | 信号数 | 交易数 | 实际成交 | 胜率 | 平均收益 | 择机买入 | 保持观望 | 建议卖出 | 好样本 | 坏样本 | 待判断 | 跳过 | 过期未成交 | 无后续数据 |",
+        "| 标的 | 信号数 | 交易数 | 实际成交 | 胜率 | 平均收益 | 买入信号 | 保持观望 | 建议卖出 | 好样本 | 坏样本 | 待判断 | 跳过 | 过期未成交 | 无后续数据 |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ]
     for row in rows:
@@ -203,7 +211,7 @@ def main() -> int:
     lines.extend(["", "## 样本分型归因", ""])
     lines.extend(
         [
-            "| 样本分型 | 信号数 | 好样本 | 坏样本 | 待判断 | 准确率 | 择机买入 | 保持观望 | 建议卖出 |",
+            "| 样本分型 | 信号数 | 好样本 | 坏样本 | 待判断 | 准确率 | 买入信号 | 保持观望 | 建议卖出 |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
@@ -217,7 +225,7 @@ def main() -> int:
                 bad_case=row["bad_case"],
                 unclear=row["unclear"],
                 accuracy=_format_accuracy(row["accuracy"]),
-                buy=actions.get("buy_on_pullback", 0),
+                buy=_buy_signal_count(actions),
                 hold=actions.get("hold", 0),
                 sell=actions.get("sell", 0),
             )
@@ -226,7 +234,7 @@ def main() -> int:
     lines.extend(["", "## 趋势判断归因", ""])
     lines.extend(
         [
-            "| 趋势判断 | 信号数 | 好样本 | 坏样本 | 待判断 | 准确率 | 择机买入 | 保持观望 | 建议卖出 |",
+            "| 趋势判断 | 信号数 | 好样本 | 坏样本 | 待判断 | 准确率 | 买入信号 | 保持观望 | 建议卖出 |",
             "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
         ]
     )
@@ -240,7 +248,53 @@ def main() -> int:
                 bad_case=row["bad_case"],
                 unclear=row["unclear"],
                 accuracy=_format_accuracy(row["accuracy"]),
-                buy=actions.get("buy_on_pullback", 0),
+                buy=_buy_signal_count(actions),
+                hold=actions.get("hold", 0),
+                sell=actions.get("sell", 0),
+            )
+        )
+
+    lines.extend(["", "## 方向偏向归因", ""])
+    lines.extend(
+        [
+            "| 方向偏向 | 信号数 | 好样本 | 坏样本 | 待判断 | 准确率 | 买入信号 | 保持观望 | 建议卖出 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in direction_rows:
+        actions = row.get("actions", {})
+        lines.append(
+            "| {bucket} | {signal_count} | {good_case} | {bad_case} | {unclear} | {accuracy} | {buy} | {hold} | {sell} |".format(
+                bucket=row["bucket"],
+                signal_count=row["signal_count"],
+                good_case=row["good_case"],
+                bad_case=row["bad_case"],
+                unclear=row["unclear"],
+                accuracy=_format_accuracy(row["accuracy"]),
+                buy=_buy_signal_count(actions),
+                hold=actions.get("hold", 0),
+                sell=actions.get("sell", 0),
+            )
+        )
+
+    lines.extend(["", "## 参与姿态归因", ""])
+    lines.extend(
+        [
+            "| 参与姿态 | 信号数 | 好样本 | 坏样本 | 待判断 | 准确率 | 买入信号 | 保持观望 | 建议卖出 |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in posture_rows:
+        actions = row.get("actions", {})
+        lines.append(
+            "| {bucket} | {signal_count} | {good_case} | {bad_case} | {unclear} | {accuracy} | {buy} | {hold} | {sell} |".format(
+                bucket=row["bucket"],
+                signal_count=row["signal_count"],
+                good_case=row["good_case"],
+                bad_case=row["bad_case"],
+                unclear=row["unclear"],
+                accuracy=_format_accuracy(row["accuracy"]),
+                buy=_buy_signal_count(actions),
                 hold=actions.get("hold", 0),
                 sell=actions.get("sell", 0),
             )

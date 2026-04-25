@@ -44,6 +44,7 @@ LABEL_DISPLAY = {
 }
 
 ACTION_DISPLAY = {
+    "buy_now": "确信买入",
     "buy_on_pullback": "择机买入",
     "hold": "保持观望",
     "sell": "建议卖出",
@@ -124,7 +125,7 @@ def _label_signal(
         raw_reference = price_by_date[trade_date]["Close"]
     reference_price = float(raw_reference)
 
-    if action == "buy_on_pullback":
+    if action in {"buy_now", "buy_on_pullback"}:
         future_return, _ = _future_average_return_pct(
             price_by_date=price_by_date,
             ordered_dates=ordered_dates,
@@ -239,7 +240,7 @@ def _write_markdown(path: Path, labels: list[SignalLabel], thresholds: LabelThre
         "",
         "## 标注规则",
         "",
-        f"- `择机买入`：使用未来 `{thresholds.buy_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.buy_horizon_days}d`；当 `avg_ret_{thresholds.buy_horizon_days}d >= {thresholds.buy_good_threshold_pct:.1f}%` 记为“好样本”；当 `avg_ret_{thresholds.buy_horizon_days}d <= {thresholds.buy_bad_threshold_pct:.1f}%` 记为“坏样本”。",
+        f"- `确信买入` / `择机买入`：使用未来 `{thresholds.buy_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.buy_horizon_days}d`；当 `avg_ret_{thresholds.buy_horizon_days}d >= {thresholds.buy_good_threshold_pct:.1f}%` 记为“好样本”；当 `avg_ret_{thresholds.buy_horizon_days}d <= {thresholds.buy_bad_threshold_pct:.1f}%` 记为“坏样本”。",
         f"- `建议卖出`：使用未来 `{thresholds.sell_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.sell_horizon_days}d`；当 `avg_ret_{thresholds.sell_horizon_days}d <= {thresholds.sell_good_threshold_pct:.1f}%` 记为“好样本”；当 `avg_ret_{thresholds.sell_horizon_days}d >= {thresholds.sell_bad_threshold_pct:.1f}%` 记为“坏样本”。",
         f"- `保持观望`：使用未来 `{thresholds.hold_horizon_days}` 个交易日收盘均价计算 `avg_ret_{thresholds.hold_horizon_days}d`；当 `abs(avg_ret_{thresholds.hold_horizon_days}d) <= {thresholds.hold_flat_threshold_pct:.1f}%` 记为“好样本”；当 `abs(avg_ret_{thresholds.hold_horizon_days}d) >= {thresholds.hold_miss_threshold_pct:.1f}%` 记为“坏样本”。",
         "- 当前标签体系只判断信号方向是否与后续短期平均价格方向一致，不评估成交质量、入场区间或执行结果。",

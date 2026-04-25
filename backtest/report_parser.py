@@ -3,6 +3,11 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from .decision_rules import (
+    SignalEvidence,
+    derive_action_from_evidence,
+    derive_trend_judgment_from_action,
+)
 from .models import ReportSignal
 
 
@@ -25,8 +30,12 @@ FIELD_PATTERNS = {
     "reference_price": _field_pattern("截面价格", r"([^\n]+)"),
     "scenario_type": _field_pattern("样本分型", r"([^\n]+)"),
     "primary_driver": _field_pattern("主导驱动", r"([^\n]+)"),
+    "direction_bias": _field_pattern("方向偏向", r"([^\n]+)"),
     "trend_integrity": _field_pattern("趋势完整性", r"([^\n]+)"),
+    "catalyst_state": _field_pattern("催化状态", r"([^\n]+)"),
+    "extension_state": _field_pattern("位置状态", r"([^\n]+)"),
     "risk_state": _field_pattern("风险状态", r"([^\n]+)"),
+    "entry_posture": _field_pattern("参与姿态", r"([^\n]+)"),
     "trend_judgment": _field_pattern(
         "趋势判断",
         r"\*{0,2}\s*(趋势延续|震荡等待确认|风险主导)\s*\*{0,2}(?=\s*(?:\n|$))",
@@ -129,7 +138,14 @@ def _parse_invalidation_price(lines: list[str]) -> float | None:
 
 
 def infer_ticker_from_report_path(path: Path) -> str:
-    report_dir = path.parent.parent
+    resolved = path.resolve()
+    for parent in resolved.parents:
+        if parent.name.lower() == "reports" and parent.parent.parent.name:
+            ticker = parent.parent.parent.name.strip()
+            if ticker:
+                return ticker.upper()
+
+    report_dir = resolved.parent.parent
     prefix = report_dir.name.split("_", 1)[0].strip()
     if not prefix:
         raise ValueError(f"Cannot infer ticker from report path: {path}")
@@ -138,16 +154,34 @@ def infer_ticker_from_report_path(path: Path) -> str:
 
 def parse_report_text(text: str, *, ticker: str, report_path: Path | None = None) -> ReportSignal:
     trade_date = _extract_field(FIELD_PATTERNS["trade_date"], text)
-    trend_judgment = _extract_plain_field("trend_judgment", text)
+    report_trend_judgment = _extract_plain_field("trend_judgment", text)
     scenario_type = _extract_plain_field("scenario_type", text)
     primary_driver = _extract_plain_field("primary_driver", text)
+    direction_bias = _extract_plain_field("direction_bias", text)
     trend_integrity = _extract_plain_field("trend_integrity", text)
+    catalyst_state = _extract_plain_field("catalyst_state", text)
+    extension_state = _extract_plain_field("extension_state", text)
     risk_state = _extract_plain_field("risk_state", text)
-    action_text = _normalize_action_text(_extract_field(FIELD_PATTERNS["action"], text))
+    entry_posture = _extract_plain_field("entry_posture", text)
+    report_action = _normalize_action_text(_extract_field(FIELD_PATTERNS["action"], text))
     if not trade_date:
         raise ValueError("Report is missing `分析日期`")
-    if not action_text:
+    if not report_action:
         raise ValueError("Report is missing `建议行动`")
+
+    evidence = SignalEvidence(
+        scenario_type=scenario_type,
+        direction_bias=direction_bias,
+        trend_integrity=trend_integrity,
+        catalyst_state=catalyst_state,
+        extension_state=extension_state,
+        risk_state=risk_state,
+        entry_posture=entry_posture,
+    )
+    derived_action = derive_action_from_evidence(evidence)
+    decision_source = "rule_based" if derived_action else "report_action_fallback"
+    action = derived_action or ACTION_MAP[report_action]
+    trend_judgment = derive_trend_judgment_from_action(action) or report_trend_judgment
 
     reference_price, reference_price_text = _parse_reference_price(text)
     entry_style = _extract_field(FIELD_PATTERNS["entry_style"], text)
@@ -158,10 +192,14 @@ def parse_report_text(text: str, *, ticker: str, report_path: Path | None = None
     return ReportSignal(
         ticker=ticker.upper(),
         trade_date=trade_date,
-        action=ACTION_MAP[action_text],
+        action=action,
         trend_judgment=trend_judgment,
+        report_action=report_action,
+        report_trend_judgment=report_trend_judgment,
+        decision_source=decision_source,
         scenario_type=scenario_type,
         primary_driver=primary_driver,
+        evidence=evidence,
         trend_integrity=trend_integrity,
         risk_state=risk_state,
         reference_price=reference_price,

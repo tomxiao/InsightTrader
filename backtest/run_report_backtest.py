@@ -119,19 +119,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--ohlcv-csv",
         help="Optional local CSV with Date/Open/High/Low/Close columns. When provided, skip remote fetch.",
     )
+    parser.add_argument(
+        "--render-chart",
+        action="store_true",
+        help="Render the backtest chart. Disabled by default.",
+    )
     return parser
 
 
-def _chart_path_for_output_dir(output_dir: Path, ticker: str) -> Path:
-    stem = output_dir.name
-    return output_dir / f"{stem}-bt.png"
+def _ohlcv_csv_path_for_output_dir(output_dir: Path) -> Path:
+    return output_dir / f"{output_dir.name}-ohlcv.csv"
 
 
-def _render_backtest_chart(output_dir: Path, ohlcv: pd.DataFrame, ticker: str) -> Path | None:
-    chart_path = _chart_path_for_output_dir(output_dir, ticker)
-    ohlcv_csv = output_dir / f"{output_dir.name}-ohlcv.csv"
-    ohlcv.to_csv(ohlcv_csv, index=False, encoding="utf-8-sig")
+def _chart_path_for_output_dir(output_dir: Path) -> Path:
+    return output_dir / f"{output_dir.name}-bt.png"
 
+
+def _render_backtest_chart(output_dir: Path) -> Path | None:
+    chart_path = _chart_path_for_output_dir(output_dir)
     helper = ROOT_DIR / "backtest" / "render_backtest_chart.py"
     system_python = shutil.which("python")
     if not system_python:
@@ -175,6 +180,7 @@ def main() -> int:
 
     output_dir = _resolve_output_dir(args.report, args.output_dir, ticker)
     output_dir.mkdir(parents=True, exist_ok=True)
+    ohlcv.to_csv(_ohlcv_csv_path_for_output_dir(output_dir), index=False, encoding="utf-8-sig")
     pd.DataFrame([signal.to_dict() for signal in signals]).to_csv(
         output_dir / "signals.csv",
         index=False,
@@ -190,9 +196,10 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    chart_path = _render_backtest_chart(output_dir, ohlcv, ticker)
-    if chart_path is not None:
-        print(f"Chart saved to {chart_path}")
+    if args.render_chart:
+        chart_path = _render_backtest_chart(output_dir)
+        if chart_path is not None:
+            print(f"Chart saved to {chart_path}")
 
     print(json.dumps(summary.to_dict(), ensure_ascii=False, indent=2))
     return 0

@@ -1,0 +1,14 @@
+{
+  "name": "round30",
+  "start_date": "2026-03-02",
+  "end_date": "2026-04-07",
+  "sample_mode": "daily",
+  "step": 1,
+  "tickers": [
+    "MU",
+    "AAOI",
+    "2513.HK"
+  ],
+  "mode": "decision_only_round",
+  "baseline_round": "round13"
+}
